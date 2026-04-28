@@ -21,8 +21,8 @@ public class FileMetaDataDocument {
     private String clerkId;
     private String name;
     private String type;
-    private String isPublic;
+    private Boolean isPublic;
     private Long size;
     private String fileLocation;
-    private LocalDateTime uploadDate;
+    private LocalDateTime uploadedAt;
 }
