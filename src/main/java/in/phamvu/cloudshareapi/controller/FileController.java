@@ -71,4 +71,10 @@ public class FileController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/toggle-public")
+    public ResponseEntity<?> togglePublic(@PathVariable String id) {
+        FileMetaDataDTO file = fileMetadataService.togglePublic(id);
+        return ResponseEntity.ok(file);
+    }
+
 }
