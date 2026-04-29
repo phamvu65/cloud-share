@@ -99,4 +99,23 @@ public class FileMetaDataService {
         FileMetaDataDocument file = fileMetaDataRepository.findById(id).orElseThrow(() -> new RuntimeException("File not found"));
         return mapToDTO(file);
     }
+
+    public void deleteFile(String id) {
+        try {
+            ProfileDocument currentProfile = profileService.getCurrenProfile();
+            FileMetaDataDocument file = fileMetaDataRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("File not found"));
+
+            if (!file.getClerkId().equals(currentProfile.getClerkId())) {
+                throw new RuntimeException("File is not belong to current user");
+            }
+
+            Path filePath = Paths.get(file.getFileLocation());
+            Files.deleteIfExists(filePath);
+
+            fileMetaDataRepository.deleteById(id);
+        }catch (Exception e) {
+            throw new RuntimeException("Error deleting the file");
+        }
+    }
 }

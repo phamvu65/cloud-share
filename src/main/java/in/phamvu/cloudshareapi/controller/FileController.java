@@ -65,4 +65,10 @@ public class FileController {
                 .body(resource);
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteFile(@PathVariable String id) {
+        fileMetadataService.deleteFile(id);
+        return ResponseEntity.noContent().build();
+    }
+
 }
