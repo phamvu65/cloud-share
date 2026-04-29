@@ -7,8 +7,10 @@ import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.swing.text.html.Option;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +19,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -72,5 +75,28 @@ public class FileMetaDataService {
                 .isPublic(fileMetadataDocument.getIsPublic())
                 .uploadedAt(fileMetadataDocument.getUploadedAt())
                 .build();
+    }
+
+    public List<FileMetaDataDTO> getFiles() {
+        ProfileDocument currentProfile = profileService.getCurrenProfile();
+        List<FileMetaDataDocument> files = fileMetaDataRepository.findByClerkId(currentProfile.getClerkId());
+        return files.stream().map(this::mapToDTO).collect(Collectors.toList());
+//        return files.stream().map(this::mapToDTO).toList();
+    }
+
+    @GetMapping("/public/{id}")
+    public FileMetaDataDTO getPublicFile(String id) {
+        Optional<FileMetaDataDocument> fileOptional = fileMetaDataRepository.findById(id);
+        if (fileOptional.isEmpty() || !fileOptional.get().getIsPublic()) {
+            throw new RuntimeException("Unable to get the file");
+        }
+
+        FileMetaDataDocument document = fileOptional.get();
+        return mapToDTO(document);
+    }
+
+    public FileMetaDataDTO getDownloadableFile(String id) {
+        FileMetaDataDocument file = fileMetaDataRepository.findById(id).orElseThrow(() -> new RuntimeException("File not found"));
+        return mapToDTO(file);
     }
 }
