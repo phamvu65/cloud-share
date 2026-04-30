@@ -1,5 +1,6 @@
 package in.phamvu.cloudshareapi.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +18,8 @@ public class FileMetaDataDTO {
     private String clerkId;
     private String name;
     private String type;
+
+    @JsonProperty("isPublic")
     private boolean isPublic;
     private Long size;
     private String fileLocation;

@@ -41,10 +41,8 @@ public class FileController {
 
     @GetMapping("/my")
     public ResponseEntity<?> getFilesForCurrentUser() {
-        Map<String, Object> response = new HashMap<>();
         List<FileMetaDataDTO> list = fileMetadataService.getFiles();
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(list);
     }
 
     @GetMapping("/public/{id}")
