@@ -19,7 +19,7 @@ public class PaymentTransaction {
     private String orderId;
     private String paymentId;
     private String planId;
-    private int amount;
+    private long amount;
     private String currency;
     private int creditsAdded;
     private String status;
