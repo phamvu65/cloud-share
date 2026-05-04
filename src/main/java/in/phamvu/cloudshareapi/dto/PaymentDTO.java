@@ -11,8 +11,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class PaymentDTO {
     private String planId;
-    private Integer amount;
+    private Long amount;
     private String currency;
+    private String clientSecret;
     private Integer credits;
     private Boolean success;
     private String message;
