@@ -1,54 +1,62 @@
 package in.phamvu.cloudshareapi.controller;
 
-import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
-import com.stripe.model.PaymentIntent;
 import com.stripe.net.Webhook;
 import in.phamvu.cloudshareapi.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/webhooks/")
+@RequestMapping("/webhooks")
 @RequiredArgsConstructor
 public class StripeWebhookController {
 
     private final PaymentService paymentService;
 
-    @Value( "${stripe.webhook.secret}")
+    @Value("${stripe.webhook.secret}")
     private String webhookSecret;
 
     @PostMapping("/stripe")
     public ResponseEntity<String> handleWebhook(
             @RequestBody String payload,
-            @RequestHeader("stripe-signature") String sigHeader) {
+            @RequestHeader("Stripe-Signature") String sigHeader) {
         try {
             Event event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
 
-            switch (event.getType()){
-                case "payment_intent.succeeded":
-                    PaymentIntent successIntent = (PaymentIntent) event.getDataObjectDeserializer()
-                            .getObject().orElseThrow();
+            System.out.println("Event type: " + event.getType());
 
-                    String clerkId = successIntent.getMetadata().get("clerk_id");
-                    String planId = successIntent.getMetadata().get("plan_id");
+                JSONObject jsonObject = new JSONObject(payload);
+            JSONObject dataObject = jsonObject.getJSONObject("data").getJSONObject("object");
 
-                    paymentService.handlePaymentSuccess(successIntent.getId(), clerkId, planId);
+            switch (event.getType()) {
+                case "checkout.session.completed":
+                    String sessionId = dataObject.getString("id");
+                    JSONObject metadata = dataObject.getJSONObject("metadata");
+
+                    String clerkId = metadata.getString("clerk_id");
+                    String planId = metadata.getString("plan_id");
+
+                    System.out.println("Session ID: " + sessionId);
+                    System.out.println("ClerkId: " + clerkId + ", PlanId: " + planId);
+
+                    paymentService.handlePaymentSuccess(sessionId, clerkId, planId);
                     break;
-                case "payment_intent.payment_failed":
-                    PaymentIntent failedIntent = (PaymentIntent) event.getDataObjectDeserializer()
-                            .getObject().orElseThrow();
 
-                    paymentService.handlePaymentFailed(failedIntent.getId());
+                case "checkout.session.expired":
+                    String expiredSessionId = dataObject.getString("id");
+                    paymentService.handlePaymentFailed(expiredSessionId);
                     break;
             }
+
             return ResponseEntity.ok("OK");
 
-        } catch (SignatureVerificationException e) {
-            return ResponseEntity.badRequest().body("Webhook error: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Webhook error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.ok("OK");
         }
-
     }
 }

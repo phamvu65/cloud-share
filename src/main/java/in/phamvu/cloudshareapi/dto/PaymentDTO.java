@@ -13,7 +13,7 @@ public class PaymentDTO {
     private String planId;
     private Long amount;
     private String currency;
-    private String clientSecret;
+    private String checkoutUrl;
     private Integer credits;
     private Boolean success;
     private String message;

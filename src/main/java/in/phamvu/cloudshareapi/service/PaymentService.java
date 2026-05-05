@@ -1,8 +1,8 @@
 package in.phamvu.cloudshareapi.service;
 
 import com.stripe.Stripe;
-import com.stripe.model.PaymentIntent;
-import com.stripe.param.PaymentIntentCreateParams;
+import com.stripe.model.checkout.Session;
+import com.stripe.param.checkout.SessionCreateParams;
 import in.phamvu.cloudshareapi.document.PaymentTransaction;
 import in.phamvu.cloudshareapi.document.ProfileDocument;
 import in.phamvu.cloudshareapi.dto.PaymentDTO;
@@ -17,12 +17,16 @@ import java.time.LocalDateTime;
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
+
     private final ProfileService profileService;
     private final UserCreditsService userCreditsService;
     private final PaymentTransactionRepository paymentTransactionRepository;
 
     @Value("${stripe.api.key}")
     private String stripeApiKey;
+
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
 
     @PostConstruct
     public void init() {
@@ -33,91 +37,97 @@ public class PaymentService {
         try {
             ProfileDocument currentProfile = profileService.getCurrenProfile();
             String clerkId = currentProfile.getClerkId();
-//            RazorpayClient razorpayClient = new RazorpayClient(razorpayKeyId, razorpayKeySecret);
-//
-//            JSONObject orderRequest = new JSONObject();
-//            orderRequest.put("amount", paymentDTO.getAmount());
-//            orderRequest.put("currency", paymentDTO.getCurrency());
-//            orderRequest.put("receipt", "order_"+System.currentTimeMillis());
-//
-//            Order order = razorpayClient.orders.create(orderRequest);
-//            String orderId = order.get("id");
 
-            PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
-                    .setAmount(paymentDTO.getAmount())
-                    .setCurrency(paymentDTO.getCurrency())
-                    .setDescription("Payment for "+paymentDTO.getPlanId())
-                    .setAutomaticPaymentMethods(
-                            PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                    .setEnabled(true)
+            // Tạo Checkout Session (thay cho PaymentIntent)
+            SessionCreateParams params = SessionCreateParams.builder()
+                    .setMode(SessionCreateParams.Mode.PAYMENT)
+                    .setSuccessUrl(frontendUrl + "/subscriptions?status=success")
+                    .setCancelUrl(frontendUrl + "/subscriptions?status=cancel")
+                    .setCustomerEmail(currentProfile.getEmail())
+                    .addLineItem(
+                            SessionCreateParams.LineItem.builder()
+                                    .setQuantity(1L)
+                                    .setPriceData(
+                                            SessionCreateParams.LineItem.PriceData.builder()
+                                                    .setCurrency(paymentDTO.getCurrency())
+                                                    .setUnitAmount(paymentDTO.getAmount().longValue() * 100)
+                                                    .setProductData(
+                                                            SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                                                    .setName("CloudShare " + paymentDTO.getPlanId().substring(0, 1).toUpperCase() + paymentDTO.getPlanId().substring(1) + " Plan")
+                                                                    .setDescription(getCreditsForPlan(paymentDTO.getPlanId()) + " credits")
+                                                                    .build()
+                                                    )
+                                                    .build()
+                                    )
                                     .build()
                     )
                     .putMetadata("clerk_id", clerkId)
                     .putMetadata("plan_id", paymentDTO.getPlanId())
                     .putMetadata("user_email", currentProfile.getEmail())
-                    .setReceiptEmail(currentProfile.getEmail())
                     .build();
 
-            PaymentIntent paymentIntent = PaymentIntent.create(params);
-            //create pending transaction record
+            Session session = Session.create(params);
+
+            // Tạo pending transaction record
             PaymentTransaction transaction = PaymentTransaction.builder()
                     .clerkId(clerkId)
-                    .orderId(paymentIntent.getId())
+                    .orderId(session.getId())
                     .planId(paymentDTO.getPlanId())
                     .amount(paymentDTO.getAmount())
                     .currency(paymentDTO.getCurrency())
                     .status("PENDING")
                     .transactionDate(LocalDateTime.now())
                     .userEmail(currentProfile.getEmail())
-                    .userName(currentProfile.getFirstName()+" "+currentProfile.getLastName())
+                    .userName(currentProfile.getFirstName() + " " + currentProfile.getLastName())
                     .build();
 
             paymentTransactionRepository.save(transaction);
 
             return PaymentDTO.builder()
-                    .orderId(paymentIntent.getId())
-                    .clientSecret(paymentIntent.getClientSecret())
+                    .orderId(session.getId())
+                    .checkoutUrl(session.getUrl())
                     .success(true)
-                    .message("Order created successfully")
+                    .message("Checkout session created successfully")
                     .build();
 
-        }catch (Exception e) {
+        } catch (Exception e) {
             return PaymentDTO.builder()
                     .success(false)
-                    .message("Error creating order: "+e.getMessage())
+                    .message("Error creating order: " + e.getMessage())
                     .build();
         }
     }
 
-    public void handlePaymentSuccess(String paymentIntentId, String clerkId, String planId) {
-        int creditsToadd = 0;
-        String plan = "BASIC";
+    /**
+     * Được gọi từ StripeWebhookController khi thanh toán thành công
+     */
+    public void handlePaymentSuccess(String sessionId, String clerkId, String planId) {
+        int creditsToAdd = getCreditsForPlan(planId);
+        String plan = planId.toUpperCase();
 
-        switch (planId) {
-            case "premium":
-                creditsToadd = 500;
-                plan = "PREMIUM";
-                break;
-            case "ultimate":
-                creditsToadd = 5000;
-                plan = "ULTIMATE";
-                break;
-        }
-
-        if(creditsToadd > 0) {
-            userCreditsService.addCredits(clerkId, creditsToadd, plan);
+        if (creditsToAdd > 0) {
+            userCreditsService.addCredits(clerkId, creditsToAdd, plan);
+            updateTransactionStatus(sessionId, "SUCCESS", creditsToAdd);
         }
     }
 
-    public void handlePaymentFailed(String paymentIntentId){
-
+    public void handlePaymentFailed(String sessionId) {
+        updateTransactionStatus(sessionId, "FAILED", null);
     }
 
-    private void updateTransactionStatus(String paymentIntentId, String status, Integer creditsToAdd) {
-        paymentTransactionRepository.findByOrderId(paymentIntentId)
+    private int getCreditsForPlan(String planId) {
+        switch (planId.toLowerCase()) {
+            case "premium": return 500;
+            case "ultimate": return 5000;
+            default: return 0;
+        }
+    }
+
+    private void updateTransactionStatus(String sessionId, String status, Integer creditsToAdd) {
+        paymentTransactionRepository.findByOrderId(sessionId)
                 .ifPresent(transaction -> {
                     transaction.setStatus(status);
-                    transaction.setPaymentId(paymentIntentId);
+                    transaction.setPaymentId(sessionId);
                     if (creditsToAdd != null) {
                         transaction.setCreditsAdded(creditsToAdd);
                     }
