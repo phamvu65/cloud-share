@@ -25,8 +25,7 @@ public class TransactionController {
         ProfileDocument currenProfile= profileService.getCurrenProfile();
         String clerkId = currenProfile.getClerkId();
 
-        List<PaymentTrans
-    action> transactionList= paymentTransactionRepository.findByClerkIdAndStatusOrderByTransactionDateDesc(clerkId, "SUCCESS");
+        List<PaymentTransaction> transactionList= paymentTransactionRepository.findByClerkIdAndStatusOrderByTransactionDateDesc(clerkId, "SUCCESS");
         return ResponseEntity.ok(transactionList);
     }
 }
