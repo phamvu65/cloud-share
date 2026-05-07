@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/webhooks/**", "/files/public/**", "/files/download/**")
+                        .requestMatchers("/webhooks/**", "/files/public/**", "/files/download/**","/health")
                         .permitAll()
                         .anyRequest()
                         .authenticated()
