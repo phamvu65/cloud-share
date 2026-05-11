@@ -45,12 +45,14 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
             String authHeader = request.getHeader("Authorization");
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Authorization header missing/invalid");
+                return;
             }
 
             String token = authHeader.substring(7); //Bo Bearer
             String[] chunks = token.split("\\."); //Chia token ra lam 3 doan
             if (chunks.length != 3) {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid JWT format");
+                return;
             }
 
             String headerJson = new String(Base64.getUrlDecoder().decode(chunks[0]));
@@ -59,6 +61,7 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
 
             if(!headerNode.has("kid")){
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Token header is missing kid");
+                return;
             }
 
             String kid = headerNode.get("kid").asText();
@@ -83,7 +86,5 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid JWT token: "+e.getMessage());
             return;
         }
-
-
     }
 }
