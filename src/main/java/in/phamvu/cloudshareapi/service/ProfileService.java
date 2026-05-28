@@ -5,6 +5,7 @@ import in.phamvu.cloudshareapi.document.ProfileDocument;
 import in.phamvu.cloudshareapi.dto.ProfileDTO;
 import in.phamvu.cloudshareapi.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProfileService {
@@ -102,6 +104,19 @@ public class ProfileService {
             throw new UsernameNotFoundException("User not authenticated");
         }
        String clerkId = SecurityContextHolder.getContext().getAuthentication().getName();
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        ProfileDocument profile = profileRepository.findByClerkId(clerkId);
+        if (profile == null) {
+            profile = new ProfileDocument();
+            profile.setClerkId(clerkId);
+            profile.setCredits(5);
+            profile.setEmail(email);
+            profile.setCreatedAt(Instant.now());
+
+            profileRepository.save(profile);
+            log.info("Created new profile for user: {}", email);
+        }
         return profileRepository.findByClerkId(clerkId);
     }
 }
