@@ -10,13 +10,14 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.util.Set;
 
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
 @Builder
 @Document(collection = "users")
-public class ProfileDocument {
+public class UserDocument {
 
     @Id
     private String id;
@@ -30,9 +31,9 @@ public class ProfileDocument {
 
     private String lastName;
 
-    private Integer credits;
-
     private String photoUrl;
+
+    private Set<String> roles;
     @CreatedDate
     private Instant createdAt;
 }

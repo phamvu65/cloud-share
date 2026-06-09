@@ -5,11 +5,10 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.Optional;
 
-public interface ProfileRepository extends MongoRepository<UserDocument, String> {
+public interface UserRepository extends MongoRepository<UserDocument, String> {
 
     Optional<UserDocument> findByEmail(String email);
 
-    UserDocument findByClerkId(String clerkId);
+    Boolean existsByEmail(String email);
 
-    Boolean existsByClerkId(String clerkId);
 }
