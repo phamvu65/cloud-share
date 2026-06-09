@@ -1,4 +1,4 @@
-package in.phamvu.cloudshareapi.dto;
+package in.phamvu.cloudshareapi.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

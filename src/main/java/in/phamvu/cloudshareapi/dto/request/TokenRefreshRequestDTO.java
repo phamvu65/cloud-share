@@ -1,4 +1,4 @@
-package in.phamvu.cloudshareapi.dto.response;
+package in.phamvu.cloudshareapi.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;

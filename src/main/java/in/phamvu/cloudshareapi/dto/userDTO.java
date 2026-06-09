@@ -11,9 +11,8 @@ import java.time.Instant;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ProfileDTO {
+public class userDTO {
     private String id;
-    private String clerkId;
     private String email;
     private String firstName;
     private String lastName;
