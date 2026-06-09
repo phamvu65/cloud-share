@@ -15,17 +15,23 @@ import java.time.Instant;
 @NoArgsConstructor
 @Data
 @Builder
-@Document(collection = "profiles")
+@Document(collection = "users")
 public class ProfileDocument {
 
     @Id
     private String id;
-    private String clerkId;
+
     @Indexed(unique = true)
     private String email;
+
+    private String password;
+
     private String firstName;
+
     private String lastName;
+
     private Integer credits;
+
     private String photoUrl;
     @CreatedDate
     private Instant createdAt;
