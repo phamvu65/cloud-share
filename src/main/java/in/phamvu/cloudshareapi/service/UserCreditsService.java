@@ -17,7 +17,7 @@ public class UserCreditsService {
 
     public UserCredits createInitialCredits(String clerkId) {
         UserCredits userCredits = UserCredits.builder()
-                .clerkId(clerkId)
+                .userId(clerkId)
                 .credits(5)
                 .plan("BASIC")
                 .build();
@@ -25,12 +25,12 @@ public class UserCreditsService {
     }
 
     public UserCredits getUserCredits(String clerkId) {
-        return userCreditsRepository.findByClerkId(clerkId)
+        return userCreditsRepository.findById(clerkId)
                 .orElseGet(() -> createInitialCredits(clerkId));
     }
 
     public UserCredits getUserCredits() {
-        String clerkId = profileService.getCurrenProfile().getClerkId();
+        String clerkId = profileService.getCurrenProfile().getId();
         return getUserCredits(clerkId);
     }
 
@@ -51,7 +51,7 @@ public class UserCreditsService {
     }
 
     public UserCredits addCredits(String clerkId, Integer creditsToadd, String plan) {
-        UserCredits userCredits = userCreditsRepository.findByClerkId(clerkId)
+        UserCredits userCredits = userCreditsRepository.findById(clerkId)
                 .orElseGet(() -> createInitialCredits(clerkId));
         userCredits.setCredits(userCredits.getCredits() + creditsToadd);
         userCredits.setPlan(plan);

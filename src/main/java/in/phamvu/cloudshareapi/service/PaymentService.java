@@ -4,7 +4,7 @@ import com.stripe.Stripe;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
 import in.phamvu.cloudshareapi.document.PaymentTransaction;
-import in.phamvu.cloudshareapi.document.ProfileDocument;
+import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.dto.PaymentDTO;
 import in.phamvu.cloudshareapi.repository.PaymentTransactionRepository;
 import jakarta.annotation.PostConstruct;
@@ -35,8 +35,8 @@ public class PaymentService {
 
     public PaymentDTO createOrder(PaymentDTO paymentDTO) {
         try {
-            ProfileDocument currentProfile = profileService.getCurrenProfile();
-            String clerkId = currentProfile.getClerkId();
+            UserDocument currentProfile = profileService.getCurrenProfile();
+            String clerkId = currentProfile.getId();
 
             // Tạo Checkout Session (thay cho PaymentIntent)
             SessionCreateParams params = SessionCreateParams.builder()

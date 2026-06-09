@@ -1,7 +1,7 @@
 package in.phamvu.cloudshareapi.service;
 
 import in.phamvu.cloudshareapi.document.FileMetaDataDocument;
-import in.phamvu.cloudshareapi.document.ProfileDocument;
+import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.dto.FileMetaDataDTO;
 import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +10,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.swing.text.html.Option;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +31,7 @@ public class FileMetaDataService {
     private final UserCreditsService userCreditsService;
 
     public List<FileMetaDataDTO> uploadFiles(MultipartFile files[]) throws IOException {
-       ProfileDocument currentProfile= profileService.getCurrenProfile();
+       UserDocument currentProfile= profileService.getCurrenProfile();
         List<FileMetaDataDocument> savedFiles = new ArrayList<>();
 
         if (!userCreditsService.hasEnoughCredits(files.length)) {
@@ -51,7 +50,6 @@ public class FileMetaDataService {
                     .name(file.getOriginalFilename())
                     .size(file.getSize())
                     .type(file.getContentType())
-                    .clerkId(currentProfile.getClerkId())
                     .isPublic(false)
                     .uploadedAt(LocalDateTime.now())
                     .build();
@@ -78,8 +76,8 @@ public class FileMetaDataService {
     }
 
     public List<FileMetaDataDTO> getFiles() {
-        ProfileDocument currentProfile = profileService.getCurrenProfile();
-        List<FileMetaDataDocument> files = fileMetaDataRepository.findByClerkId(currentProfile.getClerkId());
+        UserDocument currentProfile = profileService.getCurrenProfile();
+        List<FileMetaDataDocument> files = fileMetaDataRepository.findByClerkId(currentProfile.getId());
         return files.stream().map(this::mapToDTO).collect(Collectors.toList());
 //        return files.stream().map(this::mapToDTO).toList();
     }
@@ -102,11 +100,11 @@ public class FileMetaDataService {
 
     public void deleteFile(String id) {
         try {
-            ProfileDocument currentProfile = profileService.getCurrenProfile();
+            UserDocument currentProfile = profileService.getCurrenProfile();
             FileMetaDataDocument file = fileMetaDataRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("File not found"));
 
-            if (!file.getClerkId().equals(currentProfile.getClerkId())) {
+            if (!file.getClerkId().equals(currentProfile.getId())) {
                 throw new RuntimeException("File is not belong to current user");
             }
 

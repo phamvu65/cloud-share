@@ -1,7 +1,7 @@
 package in.phamvu.cloudshareapi.controller;
 
 import in.phamvu.cloudshareapi.document.PaymentTransaction;
-import in.phamvu.cloudshareapi.document.ProfileDocument;
+import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.repository.PaymentTransactionRepository;
 import in.phamvu.cloudshareapi.service.ProfileService;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +22,8 @@ public class TransactionController {
 
     @GetMapping
     public ResponseEntity<?> getUserTransactions() {
-        ProfileDocument currenProfile= profileService.getCurrenProfile();
-        String clerkId = currenProfile.getClerkId();
+        UserDocument currenProfile= profileService.getCurrenProfile();
+        String clerkId = currenProfile.getId();
 
         List<PaymentTransaction> transactionList= paymentTransactionRepository.findByClerkIdAndStatusOrderByTransactionDateDesc(clerkId, "SUCCESS");
         return ResponseEntity.ok(transactionList);

@@ -1,122 +1,107 @@
 package in.phamvu.cloudshareapi.service;
 
-import com.mongodb.MongoWriteException;
-import in.phamvu.cloudshareapi.document.ProfileDocument;
-import in.phamvu.cloudshareapi.dto.ProfileDTO;
-import in.phamvu.cloudshareapi.repository.ProfileRepository;
+import in.phamvu.cloudshareapi.document.UserDocument;
+import in.phamvu.cloudshareapi.dto.userDTO;
+import in.phamvu.cloudshareapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProfileService {
 
-    private final ProfileRepository profileRepository;
+    private final UserRepository userRepository;
 
-    public ProfileDTO createProfile(ProfileDTO profileDTO){
+    public userDTO createProfile(userDTO userDTO){
 
-        if (profileRepository.existsByClerkId(profileDTO.getClerkId())) {
-            return updateProfile(profileDTO);
+        if (userRepository.existsById(userDTO.getId())) {
+            return updateProfile(userDTO);
         }
 
-        ProfileDocument profile =ProfileDocument.builder()
-                .clerkId(profileDTO.getClerkId())
-                .email(profileDTO.getEmail())
-                .firstName(profileDTO.getFirstName())
-                .lastName(profileDTO.getLastName())
-                .credits(5)
-                .photoUrl(profileDTO.getPhotoUrl())
+        UserDocument profile = UserDocument.builder()
+                .email(userDTO.getEmail())
+                .firstName(userDTO.getFirstName())
+                .lastName(userDTO.getLastName())
+                .photoUrl(userDTO.getPhotoUrl())
                 .createdAt(Instant.now())
                 .build();
 
-        profile= profileRepository.save(profile);
+        profile= userRepository.save(profile);
 
-        return ProfileDTO.builder()
+        return userDTO.builder()
                 .id(profile.getId())
-                .clerkId(profile.getClerkId())
                 .email(profile.getEmail())
                 .firstName(profile.getFirstName())
                 .lastName(profile.getLastName())
-                .credits(profile.getCredits())
                 .photoUrl(profile.getPhotoUrl())
                 .createdAt(profile.getCreatedAt())
                 .build();
     }
 
-    public ProfileDTO updateProfile(ProfileDTO profileDTO) {
-        ProfileDocument existingProfile = profileRepository.findByClerkId(profileDTO.getClerkId());
+    public userDTO updateProfile(userDTO userDTO) {
+        Optional<UserDocument> existingProfile = userRepository.findById(userDTO.getId());
 
-        if (existingProfile != null) {
+        if (existingProfile.isPresent()) {
             //update fields if provided
-            if (profileDTO.getEmail() != null && !profileDTO.getEmail().isEmpty()) {
-                existingProfile.setEmail(profileDTO.getEmail());
+            if (userDTO.getEmail() != null && !userDTO.getEmail().isEmpty()) {
+                existingProfile.get().setEmail(userDTO.getEmail());
             }
 
-            if (profileDTO.getFirstName() != null && !profileDTO.getFirstName().isEmpty()) {
-                existingProfile.setFirstName(profileDTO.getFirstName());
+            if (userDTO.getFirstName() != null && !userDTO.getFirstName().isEmpty()) {
+                existingProfile.get().setFirstName(userDTO.getFirstName());
             }
 
-            if (profileDTO.getLastName() != null && !profileDTO.getLastName().isEmpty()) {
-                existingProfile.setLastName(profileDTO.getLastName());
+            if (userDTO.getLastName() != null && !userDTO.getLastName().isEmpty()) {
+                existingProfile.get().setLastName(userDTO.getLastName());
             }
 
-            if (profileDTO.getPhotoUrl() != null && !profileDTO.getPhotoUrl().isEmpty()) {
-                existingProfile.setPhotoUrl(profileDTO.getPhotoUrl());
+            if (userDTO.getPhotoUrl() != null && !userDTO.getPhotoUrl().isEmpty()) {
+                existingProfile.get().setPhotoUrl(userDTO.getPhotoUrl());
             }
 
-            profileRepository.save(existingProfile);
 
-            return ProfileDTO.builder()
-                    .id(existingProfile.getId())
-                    .email(existingProfile.getEmail())
-                    .clerkId(existingProfile.getClerkId())
-                    .firstName(existingProfile.getFirstName())
-                    .lastName(existingProfile.getLastName())
-                    .credits(existingProfile.getCredits())
-                    .createdAt(existingProfile.getCreatedAt())
-                    .photoUrl(existingProfile.getPhotoUrl())
+            return userDTO.builder()
+                    .id(existingProfile.get().getId())
+                    .email(existingProfile.get().getEmail())
+                    .firstName(existingProfile.get().getFirstName())
+                    .lastName(existingProfile.get().getLastName())
+                    .createdAt(existingProfile.get().getCreatedAt())
+                    .photoUrl(existingProfile.get().getPhotoUrl())
                     .build();
         }
         return null;
     }
 
-    public boolean exitsByClerkId(String clerkId) {
-        return profileRepository.existsByClerkId(clerkId);
-    }
+
 
     public void deleteProfile(String clerkId) {
-        ProfileDocument existingProfile = profileRepository.findByClerkId(clerkId);
+        Optional<UserDocument>  existingProfile = userRepository.findById(clerkId);
         if (existingProfile != null) {
-            profileRepository.delete(existingProfile);
         }
     }
 
-    public ProfileDocument getCurrenProfile(){
+    public UserDocument getCurrenProfile(){
         if(SecurityContextHolder.getContext().getAuthentication() == null ){
             throw new UsernameNotFoundException("User not authenticated");
         }
        String clerkId = SecurityContextHolder.getContext().getAuthentication().getName();
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        ProfileDocument profile = profileRepository.findByClerkId(clerkId);
-        if (profile == null) {
-            profile = new ProfileDocument();
-            profile.setClerkId(clerkId);
-            profile.setCredits(5);
-            profile.setEmail(email);
-            profile.setCreatedAt(Instant.now());
+        Optional<UserDocument> profile = userRepository.findById(clerkId);
+        if (profile.isEmpty()) {
+            profile = Optional.of(new UserDocument());
+            profile.get().setEmail(email);
+            profile.get().setCreatedAt(Instant.now());
 
-            profileRepository.save(profile);
             log.info("Created new profile for user: {}", email);
         }
-        return profileRepository.findByClerkId(clerkId);
+        return null;
     }
 }
