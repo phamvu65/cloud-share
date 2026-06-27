@@ -32,3 +32,6 @@ upload/
 
 ### VS Code ###
 .vscode/
+
+# Ignore user uploaded files
+upload-dir/

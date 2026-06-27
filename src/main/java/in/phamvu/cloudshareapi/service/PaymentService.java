@@ -7,9 +7,11 @@ import in.phamvu.cloudshareapi.document.PaymentTransaction;
 import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.dto.PaymentDTO;
 import in.phamvu.cloudshareapi.repository.PaymentTransactionRepository;
+import in.phamvu.cloudshareapi.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -18,9 +20,9 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class PaymentService {
 
-    private final ProfileService profileService;
     private final UserCreditsService userCreditsService;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final UserRepository userRepository;
 
     @Value("${stripe.api.key}")
     private String stripeApiKey;
@@ -35,15 +37,17 @@ public class PaymentService {
 
     public PaymentDTO createOrder(PaymentDTO paymentDTO) {
         try {
-            UserDocument currentProfile = profileService.getCurrenProfile();
-            String clerkId = currentProfile.getId();
+            UserDetails userDetails = (UserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            String clerkId = userDetails.getUsername();
+
+            UserDocument userDocument = userRepository.findById(clerkId).orElseThrow(() -> new RuntimeException("User not found"));
 
             // Tạo Checkout Session (thay cho PaymentIntent)
             SessionCreateParams params = SessionCreateParams.builder()
                     .setMode(SessionCreateParams.Mode.PAYMENT)
                     .setSuccessUrl(frontendUrl + "/subscriptions?status=success")
                     .setCancelUrl(frontendUrl + "/subscriptions?status=cancel")
-                    .setCustomerEmail(currentProfile.getEmail())
+                    .setCustomerEmail(userDocument.getEmail())
                     .addLineItem(
                             SessionCreateParams.LineItem.builder()
                                     .setQuantity(1L)
@@ -63,7 +67,7 @@ public class PaymentService {
                     )
                     .putMetadata("clerk_id", clerkId)
                     .putMetadata("plan_id", paymentDTO.getPlanId())
-                    .putMetadata("user_email", currentProfile.getEmail())
+                    .putMetadata("user_email", userDocument.getEmail())
                     .build();
 
             Session session = Session.create(params);
@@ -77,8 +81,8 @@ public class PaymentService {
                     .currency(paymentDTO.getCurrency())
                     .status("PENDING")
                     .transactionDate(LocalDateTime.now())
-                    .userEmail(currentProfile.getEmail())
-                    .userName(currentProfile.getFirstName() + " " + currentProfile.getLastName())
+                    .userEmail(userDocument.getEmail())
+                    .userName(userDocument.getFirstName() + " " + userDocument.getLastName())
                     .build();
 
             paymentTransactionRepository.save(transaction);

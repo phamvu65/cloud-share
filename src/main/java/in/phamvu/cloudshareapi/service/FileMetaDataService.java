@@ -4,7 +4,10 @@ import in.phamvu.cloudshareapi.document.FileMetaDataDocument;
 import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.dto.FileMetaDataDTO;
 import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
+import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,18 +30,24 @@ import java.util.stream.Collectors;
 public class FileMetaDataService {
 
     private final FileMetaDataRepository fileMetaDataRepository;
-    private final ProfileService profileService;
     private final UserCreditsService userCreditsService;
 
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
+    private String getCurrentUserId(){
+        CustomUserDetails customUserDetails = (CustomUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return customUserDetails.getId();
+    }
+
     public List<FileMetaDataDTO> uploadFiles(MultipartFile files[]) throws IOException {
-       UserDocument currentProfile= profileService.getCurrenProfile();
-        List<FileMetaDataDocument> savedFiles = new ArrayList<>();
+        String currentUserId = getCurrentUserId();
 
         if (!userCreditsService.hasEnoughCredits(files.length)) {
             throw new RuntimeException("Not enough credits to upload files. Please purchase more credits");
         }
 
-        Path uploadPath = Paths.get("upload").toAbsolutePath().normalize();
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(uploadPath);
         for (MultipartFile file : files) {
             String fileName = UUID.randomUUID()+"."+ StringUtils.getFilenameExtension(file.getOriginalFilename());
@@ -46,6 +55,7 @@ public class FileMetaDataService {
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
 
             FileMetaDataDocument fileMetadata = FileMetaDataDocument.builder()
+                    .userId(currentUserId)
                     .fileLocation(targetLocation.toString())
                     .name(file.getOriginalFilename())
                     .size(file.getSize())
@@ -55,11 +65,64 @@ public class FileMetaDataService {
                     .build();
 
             userCreditsService.consumeCredit();
+            fileMetaDataRepository.save(fileMetadata);
 
-            savedFiles.add(fileMetaDataRepository.save(fileMetadata));
         }
-        return savedFiles.stream().map(fileMetadataDocument -> mapToDTO(fileMetadataDocument))
-                .collect(Collectors.toList());
+        return getFiles();
+    }
+
+    public List<FileMetaDataDTO> getFiles(){
+        String currentUserId = getCurrentUserId();
+        List<FileMetaDataDocument> files = fileMetaDataRepository.findByUserId(currentUserId);
+
+        return files.stream().map(item -> mapToDTO(item)).collect(Collectors.toList());
+
+    }
+
+
+    public FileMetaDataDTO getPublicFile(String fileId) {
+
+        FileMetaDataDocument file = fileMetaDataRepository.findByIdAndIsPublic(fileId, true).orElseThrow(() -> new RuntimeException("File not found"));
+
+        return mapToDTO(file);
+    }
+
+    public FileMetaDataDTO getDownloadableFile(String fileId) {
+        String currentUserId = getCurrentUserId();
+        FileMetaDataDocument file = fileMetaDataRepository.findById(fileId).orElseThrow(() -> new RuntimeException("File not found"));
+        if (!file.getUserId().equals(currentUserId) && !file.getIsPublic()) {
+            throw new RuntimeException("You don't have permission to access this file");
+        }
+        return mapToDTO(file);
+    }
+
+    public void deleteFile(String fileId) {
+        String currentUserId = getCurrentUserId();
+        FileMetaDataDocument file = fileMetaDataRepository.findById(fileId).orElseThrow(() -> new RuntimeException("File not found"));
+        if (!file.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("You don't have permission to delete this file");
+        }
+
+        try {
+            Path path = Paths.get(file.getFileLocation());
+            Files.deleteIfExists(path);
+            fileMetaDataRepository.deleteById(fileId);
+        }catch (Exception e) {
+            throw new RuntimeException("Error deleting the file");
+        }
+    }
+
+    public FileMetaDataDTO togglePublic(String fileId) {
+        String currentUserId = getCurrentUserId();
+        FileMetaDataDocument file = fileMetaDataRepository.findById(fileId)
+                .orElseThrow(() -> new RuntimeException("File not found"));
+
+        if (!file.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("You don't have permission to toggle public status of this file");
+        }
+        file.setIsPublic(!file.getIsPublic());
+        fileMetaDataRepository.save(file);
+        return mapToDTO(file);
     }
 
     private FileMetaDataDTO mapToDTO(FileMetaDataDocument fileMetadataDocument) {
@@ -69,60 +132,10 @@ public class FileMetaDataService {
                 .name(fileMetadataDocument.getName())
                 .size(fileMetadataDocument.getSize())
                 .type(fileMetadataDocument.getType())
-                .clerkId(fileMetadataDocument.getClerkId())
+                .userId(fileMetadataDocument.getUserId())
                 .isPublic(fileMetadataDocument.getIsPublic())
                 .uploadedAt(fileMetadataDocument.getUploadedAt())
                 .build();
     }
 
-    public List<FileMetaDataDTO> getFiles() {
-        UserDocument currentProfile = profileService.getCurrenProfile();
-        List<FileMetaDataDocument> files = fileMetaDataRepository.findByClerkId(currentProfile.getId());
-        return files.stream().map(this::mapToDTO).collect(Collectors.toList());
-//        return files.stream().map(this::mapToDTO).toList();
-    }
-
-    @GetMapping("/public/{id}")
-    public FileMetaDataDTO getPublicFile(String id) {
-        Optional<FileMetaDataDocument> fileOptional = fileMetaDataRepository.findById(id);
-        if (fileOptional.isEmpty() || !fileOptional.get().getIsPublic()) {
-            throw new RuntimeException("Unable to get the file");
-        }
-
-        FileMetaDataDocument document = fileOptional.get();
-        return mapToDTO(document);
-    }
-
-    public FileMetaDataDTO getDownloadableFile(String id) {
-        FileMetaDataDocument file = fileMetaDataRepository.findById(id).orElseThrow(() -> new RuntimeException("File not found"));
-        return mapToDTO(file);
-    }
-
-    public void deleteFile(String id) {
-        try {
-            UserDocument currentProfile = profileService.getCurrenProfile();
-            FileMetaDataDocument file = fileMetaDataRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("File not found"));
-
-            if (!file.getClerkId().equals(currentProfile.getId())) {
-                throw new RuntimeException("File is not belong to current user");
-            }
-
-            Path filePath = Paths.get(file.getFileLocation());
-            Files.deleteIfExists(filePath);
-
-            fileMetaDataRepository.deleteById(id);
-        }catch (Exception e) {
-            throw new RuntimeException("Error deleting the file");
-        }
-    }
-
-    public FileMetaDataDTO togglePublic(String id) {
-        FileMetaDataDocument file = fileMetaDataRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("File not found"));
-
-        file.setIsPublic(!file.getIsPublic());
-        fileMetaDataRepository.save(file);
-        return mapToDTO(file);
-    }
 }

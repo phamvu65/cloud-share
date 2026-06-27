@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 public class FileMetaDataDTO {
 
     private String id;
-    private String clerkId;
+    private String userId;
     private String name;
     private String type;
 

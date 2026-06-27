@@ -4,6 +4,8 @@ package in.phamvu.cloudshareapi.service;
 import in.phamvu.cloudshareapi.document.UserCredits;
 import in.phamvu.cloudshareapi.repository.UserCreditsRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 
 import java.util.function.Supplier;
@@ -13,7 +15,6 @@ import java.util.function.Supplier;
 public class UserCreditsService {
 
     private final UserCreditsRepository userCreditsRepository;
-    private final ProfileService profileService;
 
     public UserCredits createInitialCredits(String clerkId) {
         UserCredits userCredits = UserCredits.builder()
@@ -30,7 +31,8 @@ public class UserCreditsService {
     }
 
     public UserCredits getUserCredits() {
-        String clerkId = profileService.getCurrenProfile().getId();
+        UserDetails userDetails = (UserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String clerkId = userDetails.getUsername();
         return getUserCredits(clerkId);
     }
 
