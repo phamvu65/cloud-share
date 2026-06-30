@@ -67,6 +67,15 @@ public class JwtUtils {
                 .getSubject();
     }
 
+    public String getTokenTypeFromJwtToken(String token){
+        return Jwts.parserBuilder()
+                .setSigningKey(signingKey)
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("tokenType", String.class);
+    }
+
     public boolean validateJwtToken(String authToken){
         try{
             Jwts.parserBuilder()

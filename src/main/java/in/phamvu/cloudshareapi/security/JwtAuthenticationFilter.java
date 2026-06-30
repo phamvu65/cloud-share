@@ -27,6 +27,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         String jwt = parseJwt(request);
         if(jwt != null && jwtUtils.validateJwtToken(jwt)){
+
+            String tokenType = jwtUtils.getTokenTypeFromJwtToken(jwt);
+            if (!"ACCESS".equals(tokenType)){
+                log.warn("Security Alert: REFRESH token was illegally used to access secured endpoint!");
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"error\": \"Invalid token type. Access token required.\"}");
+
+                return;
+            }
+
             String email = jwtUtils.getUserNameFromJwtToken(jwt);
 
             UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
