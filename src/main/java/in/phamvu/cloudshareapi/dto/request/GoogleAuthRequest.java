@@ -1,4 +1,3 @@
 package in.phamvu.cloudshareapi.dto.request;
 
-public record GoogleAuthRequest() {
-}
+public record GoogleAuthRequest(String idToken) {}

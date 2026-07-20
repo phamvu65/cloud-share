@@ -1,5 +1,6 @@
 package in.phamvu.cloudshareapi.document;
 
+import in.phamvu.cloudshareapi.model.AuthProvider;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,6 +33,8 @@ public class UserDocument {
     private String lastName;
 
     private String photoUrl;
+
+    private AuthProvider provider = AuthProvider.LOCAL;
 
     private Set<String> roles;
     @CreatedDate
