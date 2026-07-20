@@ -1,5 +1,6 @@
 package in.phamvu.cloudshareapi.controller;
 
+import in.phamvu.cloudshareapi.dto.request.GoogleAuthRequest;
 import in.phamvu.cloudshareapi.dto.request.LoginRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.RegisterRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.TokenRefreshRequestDTO;
@@ -26,8 +27,14 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<String> register(@Valid @RequestBody RegisterRequestDTO registerRequestDTO) {
-        authService.resgisterUser(registerRequestDTO);
+        authService.registerUser(registerRequestDTO);
         return ResponseEntity.ok("User registered successfully");
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<JwtResponseDTO> googleAuth(@RequestBody GoogleAuthRequest request) {
+        JwtResponseDTO response = authService.processGoogleLogin(request.idToken());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/refresh")
