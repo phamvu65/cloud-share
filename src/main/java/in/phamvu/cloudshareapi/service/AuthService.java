@@ -73,12 +73,12 @@ public class AuthService {
     }
 
     public JwtResponseDTO login(LoginRequestDTO request) {
-        log.info("Login request received for email: {}", request.getEmail());
-        String email = request.getEmail();
+        log.info("Login request received for identifier: {}", request.getIdentifier());
+        String identifier = request.getIdentifier();
         String password = request.getPassword();
 
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(email, password)
+                new UsernamePasswordAuthenticationToken(identifier, password)
         );
 
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
