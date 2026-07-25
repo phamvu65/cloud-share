@@ -18,6 +18,7 @@ public class CustomUserDetails implements UserDetails {
     private String email;
     private String password;
     private Collection<? extends GrantedAuthority> authorities;
+    private boolean enabled;
 
     public static CustomUserDetails build(UserDocument user) {
 
@@ -25,7 +26,7 @@ public class CustomUserDetails implements UserDetails {
                 .map(SimpleGrantedAuthority::new)
                 .collect(java.util.stream.Collectors.toList());
 
-        return new CustomUserDetails(user.getId(), user.getEmail(), user.getPassword(), authorities);
+        return new CustomUserDetails(user.getId(), user.getEmail(), user.getPassword(), authorities, !user.isDeleted());
     }
 
     @Override
@@ -60,6 +61,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return enabled;
     }
 }

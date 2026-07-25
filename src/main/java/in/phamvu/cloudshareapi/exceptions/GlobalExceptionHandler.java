@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -16,6 +17,7 @@ import org.springframework.web.context.request.WebRequest;
 import java.util.Date;
 
 import static org.springframework.http.HttpStatus.CONFLICT;
+import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 
@@ -49,6 +51,20 @@ public class GlobalExceptionHandler {
                 .status(CONFLICT.value())
                 .error(CONFLICT.getReasonPhrase())
                 .timestamp(new Date())
+                .path(request.getDescription(false).replace("uri=", ""))
+                .build();
+
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(UNAUTHORIZED)
+    public ErrorResponse handleAuthenticationException(AuthenticationException e, WebRequest request){
+
+        return ErrorResponse.builder()
+                .timestamp(new Date())
+                .message(e.getMessage())
+                .status(UNAUTHORIZED.value())
+                .error(UNAUTHORIZED.getReasonPhrase())
                 .path(request.getDescription(false).replace("uri=", ""))
                 .build();
 

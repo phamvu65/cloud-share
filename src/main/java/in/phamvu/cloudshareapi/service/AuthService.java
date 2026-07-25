@@ -111,6 +111,10 @@ public class AuthService {
         UserDocument user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
+        if (user.isDeleted()) {
+            throw new InvalidDataException("Account has been deleted");
+        }
+
         String newAccessToken = jwtUtils.generateAccessToken(email, user.getId(), user.getRoles());
         String newRefreshToken = jwtUtils.generateRefreshToken(email, user.getId());
 
@@ -162,6 +166,10 @@ public class AuthService {
                 log.info("New Google user registered with 5 credits: {}", email);
                 return newUser;
             });
+
+            if (user.isDeleted()) {
+                throw new InvalidDataException("Account has been deleted");
+            }
 
             String accessToken = jwtUtils.generateAccessToken(user.getEmail(), user.getId(), user.getRoles());
             String refreshToken = jwtUtils.generateRefreshToken(user.getEmail(), user.getId());
