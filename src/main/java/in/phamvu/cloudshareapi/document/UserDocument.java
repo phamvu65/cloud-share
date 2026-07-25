@@ -26,6 +26,9 @@ public class UserDocument {
     @Indexed(unique = true)
     private String email;
 
+    @Indexed(unique = true, sparse = true)
+    private String username;
+
     private String password;
 
     private String firstName;
@@ -37,6 +40,12 @@ public class UserDocument {
     private AuthProvider provider = AuthProvider.LOCAL;
 
     private Set<String> roles;
+
+    @Builder.Default
+    private boolean deleted = false;
+
+    private Instant deletedAt;
+
     @CreatedDate
     private Instant createdAt;
 }
