@@ -36,22 +36,24 @@ public class JwtUtils {
      * @param userId
      * @return
      */
-    public String generateRefreshToken(String email, String userId){
+    public String generateRefreshToken(String email, String userId, String sid){
         return Jwts.builder()
                 .setSubject(email)
                 .claim("userId",userId)
                 .claim("tokenType", "REFRESH")
+                .claim("sid", sid)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + jwtRefreshExpirationMs))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    public String generateAccessToken(String email, String userId, Set<String> roles){
+    public String generateAccessToken(String email, String userId, Set<String> roles, String sid){
         return Jwts.builder()
                 .setSubject(email)
                 .claim("userId",userId)
                 .claim("tokenType", "ACCESS")
+                .claim("sid", sid)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
@@ -74,6 +76,15 @@ public class JwtUtils {
                 .parseClaimsJws(token)
                 .getBody()
                 .get("tokenType", String.class);
+    }
+
+    public String getSidFromJwtToken(String token){
+        return Jwts.parserBuilder()
+                .setSigningKey(signingKey)
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("sid", String.class);
     }
 
     public boolean validateJwtToken(String authToken){

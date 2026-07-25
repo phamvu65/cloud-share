@@ -47,6 +47,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             authenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+
+            request.setAttribute("sid", jwtUtils.getSidFromJwtToken(jwt));
         }
         filterChain.doFilter(request, response);
     }
