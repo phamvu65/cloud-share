@@ -35,3 +35,6 @@ upload/
 
 # Ignore user uploaded files
 upload-dir/
+
+# Environment variables
+.env

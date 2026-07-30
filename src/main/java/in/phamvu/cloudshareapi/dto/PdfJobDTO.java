@@ -1,6 +1,7 @@
 package in.phamvu.cloudshareapi.dto;
 
 import in.phamvu.cloudshareapi.document.PdfJobStatus;
+import in.phamvu.cloudshareapi.document.PdfJobType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,9 +18,12 @@ public class PdfJobDTO {
     private String id;
     private String userId;
     private PdfJobStatus status;
+    private PdfJobType jobType;
     private String inputFileId;
     private String resultFileId;
     private Integer quality;
+    private String sourceLanguage;
+    private String targetLanguage;
     private String errorMessage;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -2,6 +2,7 @@ package in.phamvu.cloudshareapi.controller;
 
 import in.phamvu.cloudshareapi.dto.PdfJobDTO;
 import in.phamvu.cloudshareapi.dto.request.CompressPdfRequestDTO;
+import in.phamvu.cloudshareapi.dto.request.TranslatePdfRequestDTO;
 import in.phamvu.cloudshareapi.service.PdfJobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,19 @@ public class PdfController {
         log.info("Initiating compress PDF job API for file ID: {}", dto.getFileId());
         PdfJobDTO job = pdfJobService.submitCompressJob(dto);
         log.info("Successfully submitted compress job with ID: {}", job.getId());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(job);
+    }
+
+    /**
+     * API to submit an async DOCX translate job. Returns 202 Accepted since the result
+     * file does not exist yet - only the job record does. Poll GET /pdf/jobs/{id}
+     * for completion.
+     */
+    @PostMapping("/translate")
+    public ResponseEntity<PdfJobDTO> submitTranslateJob(@Valid @RequestBody TranslatePdfRequestDTO dto) {
+        log.info("Initiating translate DOCX job API for file ID: {}", dto.getFileId());
+        PdfJobDTO job = pdfJobService.submitTranslateJob(dto);
+        log.info("Successfully submitted translate job with ID: {}", job.getId());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(job);
     }
 

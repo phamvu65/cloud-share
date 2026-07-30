@@ -22,9 +22,12 @@ public class PdfJobDocument {
     private String id;
     private String userId;
     private PdfJobStatus status;
+    private PdfJobType jobType;
     private String inputFileId;
     private String resultFileId;
     private Integer quality;
+    private String sourceLanguage;
+    private String targetLanguage;
     private String errorMessage;
 
     @CreatedDate
