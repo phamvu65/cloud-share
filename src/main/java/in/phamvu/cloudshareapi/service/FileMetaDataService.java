@@ -73,7 +73,7 @@ public class FileMetaDataService {
 
     public List<FileMetaDataDTO> getFiles(){
         String currentUserId = getCurrentUserId();
-        List<FileMetaDataDocument> files = fileMetaDataRepository.findByUserId(currentUserId);
+        List<FileMetaDataDocument> files = fileMetaDataRepository.findByUserIdOrderByUploadedAtDesc(currentUserId);
 
         return files.stream().map(item -> mapToDTO(item)).collect(Collectors.toList());
 
