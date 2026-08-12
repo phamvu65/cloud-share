@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -90,9 +91,21 @@ public class FileController {
 
         log.info("Successfully streaming file binary for download. File name: {}", downloadableFile.getName());
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentType(resolveContentType(downloadableFile.getType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + downloadableFile.getName() + "\"")
                 .body(resource);
+    }
+
+    private MediaType resolveContentType(String storedType) {
+        if (!StringUtils.hasText(storedType)) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        try {
+            return MediaType.parseMediaType(storedType);
+        } catch (Exception e) {
+            log.warn("Stored file type '{}' is not a valid media type, falling back to octet-stream", storedType);
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 
     /**
