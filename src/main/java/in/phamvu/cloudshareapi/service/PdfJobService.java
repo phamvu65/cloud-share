@@ -1,11 +1,14 @@
 package in.phamvu.cloudshareapi.service;
 
+import in.phamvu.cloudshareapi.document.ConvertFormat;
 import in.phamvu.cloudshareapi.document.FileMetaDataDocument;
 import in.phamvu.cloudshareapi.document.PdfJobDocument;
 import in.phamvu.cloudshareapi.document.PdfJobStatus;
 import in.phamvu.cloudshareapi.document.PdfJobType;
 import in.phamvu.cloudshareapi.dto.PdfJobDTO;
 import in.phamvu.cloudshareapi.dto.request.CompressPdfRequestDTO;
+import in.phamvu.cloudshareapi.dto.request.ConvertFromPdfRequestDTO;
+import in.phamvu.cloudshareapi.dto.request.ConvertToPdfRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.TranslatePdfRequestDTO;
 import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import in.phamvu.cloudshareapi.repository.PdfJobRepository;
@@ -25,12 +28,18 @@ public class PdfJobService {
     private static final int CREDIT_COST_PER_JOB = 1;
     private static final String DOCX_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final String PPTX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    private static final String XLSX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final PdfJobRepository pdfJobRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
     private final UserCreditsService userCreditsService;
     private final PdfProcessingService pdfProcessingService;
     private final DocxTranslationService docxTranslationService;
+    private final LibreOfficeConversionService libreOfficeConversionService;
+    private final PdfImageConversionService pdfImageConversionService;
 
     private String getCurrentUserId() {
         CustomUserDetails customUserDetails = (CustomUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -54,6 +63,74 @@ public class PdfJobService {
     private boolean isDocx(FileMetaDataDocument file) {
         return DOCX_CONTENT_TYPE.equalsIgnoreCase(file.getType())
                 || (file.getName() != null && file.getName().toLowerCase().endsWith(".docx"));
+    }
+
+    private boolean isPptx(FileMetaDataDocument file) {
+        return PPTX_CONTENT_TYPE.equalsIgnoreCase(file.getType())
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".pptx"));
+    }
+
+    private boolean isXlsx(FileMetaDataDocument file) {
+        return XLSX_CONTENT_TYPE.equalsIgnoreCase(file.getType())
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".xlsx"));
+    }
+
+    private boolean isHtml(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().toLowerCase().startsWith("text/html"))
+                || (file.getName() != null && (file.getName().toLowerCase().endsWith(".html")
+                        || file.getName().toLowerCase().endsWith(".htm")));
+    }
+
+    private boolean isPng(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().equalsIgnoreCase("image/png"))
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".png"));
+    }
+
+    private boolean isJpg(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().toLowerCase().startsWith("image/jpeg"))
+                || (file.getName() != null && (file.getName().toLowerCase().endsWith(".jpg")
+                        || file.getName().toLowerCase().endsWith(".jpeg")));
+    }
+
+    private PdfJobType detectSourceJobType(FileMetaDataDocument file) {
+        if (isDocx(file)) {
+            return PdfJobType.WORD_TO_PDF;
+        }
+        if (isPptx(file)) {
+            return PdfJobType.PPTX_TO_PDF;
+        }
+        if (isXlsx(file)) {
+            return PdfJobType.EXCEL_TO_PDF;
+        }
+        if (isHtml(file)) {
+            return PdfJobType.HTML_TO_PDF;
+        }
+        if (isPng(file)) {
+            return PdfJobType.PNG_TO_PDF;
+        }
+        if (isJpg(file)) {
+            return PdfJobType.JPG_TO_PDF;
+        }
+        throw new RuntimeException("Unsupported file type for conversion to PDF: " + file.getName());
+    }
+
+    private PdfJobType targetFormatToJobType(ConvertFormat targetFormat) {
+        return switch (targetFormat) {
+            case WORD -> PdfJobType.PDF_TO_WORD;
+            case PNG -> PdfJobType.PDF_TO_PNG;
+            case JPG -> PdfJobType.PDF_TO_JPG;
+            case HTML -> PdfJobType.PDF_TO_HTML;
+        };
+    }
+
+    private void dispatchConversionJob(String jobId, String userId, String fileId, PdfJobType jobType) {
+        switch (jobType) {
+            case PDF_TO_PNG, PDF_TO_JPG ->
+                    pdfImageConversionService.processPdfToImageJob(jobId, userId, fileId, jobType);
+            case PNG_TO_PDF, JPG_TO_PDF ->
+                    pdfImageConversionService.processImageToPdfJob(jobId, userId, fileId, jobType);
+            default -> libreOfficeConversionService.processConversionJob(jobId, userId, fileId, jobType);
+        }
     }
 
     private void consumeJobCredit() {
@@ -112,6 +189,45 @@ public class PdfJobService {
         PdfJobDocument saved = pdfJobRepository.save(job);
 
         docxTranslationService.processTranslateJob(saved.getId(), userId, dto.getFileId(), sourceLanguage, dto.getTargetLanguage());
+        return mapToDTO(saved);
+    }
+
+    public PdfJobDTO submitConvertFromPdfJob(ConvertFromPdfRequestDTO dto) {
+        String userId = getCurrentUserId();
+        FileMetaDataDocument file = getOwnedFile(dto.getFileId(), userId);
+        if (!isPdf(file)) {
+            throw new RuntimeException("Selected file is not a PDF: " + file.getName());
+        }
+        PdfJobType jobType = targetFormatToJobType(dto.getTargetFormat());
+        consumeJobCredit();
+
+        PdfJobDocument job = PdfJobDocument.builder()
+                .userId(userId)
+                .status(PdfJobStatus.PENDING)
+                .jobType(jobType)
+                .inputFileId(dto.getFileId())
+                .build();
+        PdfJobDocument saved = pdfJobRepository.save(job);
+
+        dispatchConversionJob(saved.getId(), userId, dto.getFileId(), jobType);
+        return mapToDTO(saved);
+    }
+
+    public PdfJobDTO submitConvertToPdfJob(ConvertToPdfRequestDTO dto) {
+        String userId = getCurrentUserId();
+        FileMetaDataDocument file = getOwnedFile(dto.getFileId(), userId);
+        PdfJobType jobType = detectSourceJobType(file);
+        consumeJobCredit();
+
+        PdfJobDocument job = PdfJobDocument.builder()
+                .userId(userId)
+                .status(PdfJobStatus.PENDING)
+                .jobType(jobType)
+                .inputFileId(dto.getFileId())
+                .build();
+        PdfJobDocument saved = pdfJobRepository.save(job);
+
+        dispatchConversionJob(saved.getId(), userId, dto.getFileId(), jobType);
         return mapToDTO(saved);
     }
 
