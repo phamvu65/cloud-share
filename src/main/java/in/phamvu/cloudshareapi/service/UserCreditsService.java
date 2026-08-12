@@ -3,12 +3,9 @@ package in.phamvu.cloudshareapi.service;
 
 import in.phamvu.cloudshareapi.document.UserCredits;
 import in.phamvu.cloudshareapi.repository.UserCreditsRepository;
+import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
-
-import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -16,24 +13,23 @@ public class UserCreditsService {
 
     private final UserCreditsRepository userCreditsRepository;
 
-    public UserCredits createInitialCredits(String clerkId) {
+    public UserCredits createInitialCredits(String userId) {
         UserCredits userCredits = UserCredits.builder()
-                .userId(clerkId)
+                .userId(userId)
                 .credits(5)
                 .plan("BASIC")
                 .build();
         return userCreditsRepository.save(userCredits);
     }
 
-    public UserCredits getUserCredits(String clerkId) {
-        return userCreditsRepository.findById(clerkId)
-                .orElseGet(() -> createInitialCredits(clerkId));
+    public UserCredits getUserCredits(String userId) {
+        return userCreditsRepository.findByUserId(userId)
+                .orElseGet(() -> createInitialCredits(userId));
     }
 
     public UserCredits getUserCredits() {
-        UserDetails userDetails = (UserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String clerkId = userDetails.getUsername();
-        return getUserCredits(clerkId);
+        CustomUserDetails userDetails = (CustomUserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return getUserCredits(userDetails.getId());
     }
 
     public Boolean hasEnoughCredits(int requiredCredits) {
@@ -52,9 +48,9 @@ public class UserCreditsService {
         return userCreditsRepository.save(userCredits);
     }
 
-    public UserCredits addCredits(String clerkId, Integer creditsToadd, String plan) {
-        UserCredits userCredits = userCreditsRepository.findById(clerkId)
-                .orElseGet(() -> createInitialCredits(clerkId));
+    public UserCredits addCredits(String userId, Integer creditsToadd, String plan) {
+        UserCredits userCredits = userCreditsRepository.findByUserId(userId)
+                .orElseGet(() -> createInitialCredits(userId));
         userCredits.setCredits(userCredits.getCredits() + creditsToadd);
         userCredits.setPlan(plan);
         return userCreditsRepository.save(userCredits);

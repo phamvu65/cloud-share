@@ -27,19 +27,29 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Runs the actual DOCX translation work on the {@code pdfTaskExecutor} pool. Never reads
- * {@code SecurityContextHolder} (async threads don't inherit it) - userId is always
- * passed in explicitly by the caller.
+ * {@code SecurityContextHolder} (async threads don't inherit it).
+ *
+ * <p>The result is written to a temp file referenced from the job document, never persisted as
+ * a {@code FileMetaDataDocument} - it is deleted after a single download or once it expires.
+ * See {@link PdfResultCleanupService}.
  *
  * The original document is edited in place: each paragraph's combined text is translated
  * and written back into its first text-bearing run (which carries the paragraph's
  * formatting), and the paragraph's remaining runs are dropped.
  * This keeps fonts, alignment, lists, tables and images intact - only per-run formatting
  * that varies within a single paragraph (e.g. a bolded word mid-sentence) is not preserved.
+ *
+ * Every translatable paragraph in the document is collected first and sent to
+ * {@link TranslationClient} as one batched call (internally chunked) instead of one call
+ * per paragraph - the self-hosted model runs on CPU, so per-call overhead needs to be
+ * amortized across many paragraphs rather than paid per paragraph.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,6 +58,7 @@ public class DocxTranslationService {
 
     private static final String DOCX_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final int RESULT_TTL_HOURS = 1;
 
     private final PdfJobRepository pdfJobRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
@@ -56,8 +67,11 @@ public class DocxTranslationService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
+    private record TranslatableParagraph(XWPFParagraph paragraph, String originalText, int keepRunIndex) {
+    }
+
     @Async("pdfTaskExecutor")
-    public void processTranslateJob(String jobId, String userId, String fileId, String sourceLanguage, String targetLanguage) {
+    public void processTranslateJob(String jobId, String fileId, String sourceLanguage, String targetLanguage) {
         PdfJobDocument job = pdfJobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.error("Translate job {} not found, aborting processing", jobId);
@@ -73,7 +87,6 @@ public class DocxTranslationService {
                 throw new RuntimeException("Source file is missing on disk: " + source.getFileLocation());
             }
 
-            String resultId;
             XWPFDocument document;
             try (FileInputStream fis = new FileInputStream(sourceFile)) {
                 document = new XWPFDocument(fis);
@@ -82,15 +95,24 @@ public class DocxTranslationService {
                 throw new RuntimeException("This file could not be read as a valid DOCX (it may be corrupted or in an unsupported format)");
             }
             try (document) {
-                translateParagraphs(document.getParagraphs(), sourceLanguage, targetLanguage);
-                translateTables(document.getTables(), sourceLanguage, targetLanguage);
+                List<TranslatableParagraph> units = new ArrayList<>();
+                collectParagraphs(document.getParagraphs(), units);
+                collectTables(document.getTables(), units);
                 for (XWPFHeader header : document.getHeaderList()) {
-                    translateParagraphs(header.getParagraphs(), sourceLanguage, targetLanguage);
-                    translateTables(header.getTables(), sourceLanguage, targetLanguage);
+                    collectParagraphs(header.getParagraphs(), units);
+                    collectTables(header.getTables(), units);
                 }
                 for (XWPFFooter footer : document.getFooterList()) {
-                    translateParagraphs(footer.getParagraphs(), sourceLanguage, targetLanguage);
-                    translateTables(footer.getTables(), sourceLanguage, targetLanguage);
+                    collectParagraphs(footer.getParagraphs(), units);
+                    collectTables(footer.getTables(), units);
+                }
+
+                if (!units.isEmpty()) {
+                    List<String> originalTexts = units.stream().map(TranslatableParagraph::originalText).toList();
+                    List<String> translatedTexts = translationClient.translateBatch(originalTexts, sourceLanguage, targetLanguage);
+                    for (int i = 0; i < units.size(); i++) {
+                        applyTranslation(units.get(i), translatedTexts.get(i));
+                    }
                 }
 
                 Path uploadPath = resolveUploadPath();
@@ -99,10 +121,9 @@ public class DocxTranslationService {
                 try (OutputStream os = Files.newOutputStream(targetPath)) {
                     document.write(os);
                 }
-                resultId = saveOutputFile(userId, targetPath, outputName);
+                applyResult(job, source.getName(), targetPath, "docx");
             }
 
-            job.setResultFileId(resultId);
             job.setStatus(PdfJobStatus.COMPLETED);
             job.setErrorMessage(null);
         } catch (Exception e) {
@@ -113,54 +134,52 @@ public class DocxTranslationService {
         }
     }
 
-    private void translateTables(List<XWPFTable> tables, String sourceLanguage, String targetLanguage) {
+    private void collectTables(List<XWPFTable> tables, List<TranslatableParagraph> out) {
         for (XWPFTable table : tables) {
             for (XWPFTableRow row : table.getRows()) {
                 for (XWPFTableCell cell : row.getTableCells()) {
-                    translateParagraphs(cell.getParagraphs(), sourceLanguage, targetLanguage);
-                    translateTables(cell.getTables(), sourceLanguage, targetLanguage);
+                    collectParagraphs(cell.getParagraphs(), out);
+                    collectTables(cell.getTables(), out);
                 }
             }
         }
     }
 
-    private void translateParagraphs(List<XWPFParagraph> paragraphs, String sourceLanguage, String targetLanguage) {
+    private void collectParagraphs(List<XWPFParagraph> paragraphs, List<TranslatableParagraph> out) {
         for (XWPFParagraph paragraph : paragraphs) {
-            translateParagraph(paragraph, sourceLanguage, targetLanguage);
+            List<XWPFRun> runs = paragraph.getRuns();
+            if (runs.isEmpty()) {
+                continue;
+            }
+            String originalText = paragraph.getText();
+            if (!StringUtils.hasText(originalText)) {
+                continue;
+            }
+            int keepIndex = -1;
+            for (int i = 0; i < runs.size(); i++) {
+                if (StringUtils.hasText(runs.get(i).getText(0))) {
+                    keepIndex = i;
+                    break;
+                }
+            }
+            if (keepIndex == -1) {
+                continue;
+            }
+            out.add(new TranslatableParagraph(paragraph, originalText, keepIndex));
         }
     }
 
-    private void translateParagraph(XWPFParagraph paragraph, String sourceLanguage, String targetLanguage) {
-        List<XWPFRun> runs = paragraph.getRuns();
-        if (runs.isEmpty()) {
-            return;
-        }
-        String originalText = paragraph.getText();
-        if (!StringUtils.hasText(originalText)) {
-            return;
-        }
-
-        int keepIndex = -1;
-        for (int i = 0; i < runs.size(); i++) {
-            if (StringUtils.hasText(runs.get(i).getText(0))) {
-                keepIndex = i;
-                break;
-            }
-        }
-        if (keepIndex == -1) {
-            return;
-        }
-
-        String translatedText = translationClient.translate(originalText, sourceLanguage, targetLanguage);
-        runs.get(keepIndex).setText(translatedText, 0);
+    private void applyTranslation(TranslatableParagraph unit, String translatedText) {
+        List<XWPFRun> runs = unit.paragraph().getRuns();
+        runs.get(unit.keepRunIndex()).setText(translatedText, 0);
 
         for (int i = runs.size() - 1; i >= 0; i--) {
-            if (i == keepIndex) {
+            if (i == unit.keepRunIndex()) {
                 continue;
             }
             XWPFRun run = runs.get(i);
             if (run.getEmbeddedPictures().isEmpty()) {
-                paragraph.removeRun(i);
+                unit.paragraph().removeRun(i);
             } else if (StringUtils.hasText(run.getText(0))) {
                 run.setText("", 0);
             }
@@ -173,16 +192,21 @@ public class DocxTranslationService {
         return uploadPath;
     }
 
-    private String saveOutputFile(String userId, Path filePath, String displayName) throws IOException {
-        FileMetaDataDocument document = FileMetaDataDocument.builder()
-                .userId(userId)
-                .fileLocation(filePath.toString())
-                .name(displayName)
-                .size(Files.size(filePath))
-                .type(DOCX_CONTENT_TYPE)
-                .isPublic(false)
-                .build();
-        return fileMetaDataRepository.save(document).getId();
+    private void applyResult(PdfJobDocument job, String sourceName, Path targetPath, String extension) throws IOException {
+        job.setResultFilePath(targetPath.toString());
+        job.setResultFileName(buildResultFileName(sourceName, extension));
+        job.setResultContentType(DOCX_CONTENT_TYPE);
+        job.setResultSize(Files.size(targetPath));
+        job.setResultExpiresAt(LocalDateTime.now().plusHours(RESULT_TTL_HOURS));
+    }
+
+    private String buildResultFileName(String sourceName, String extension) {
+        String base = (sourceName != null && !sourceName.isBlank()) ? sourceName : "result";
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        return base + "." + extension;
     }
 
     private void markProcessing(PdfJobDocument job) {

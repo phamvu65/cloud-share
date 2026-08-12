@@ -1,46 +1,70 @@
 package in.phamvu.cloudshareapi.service;
 
+import in.phamvu.cloudshareapi.document.ConvertFormat;
 import in.phamvu.cloudshareapi.document.FileMetaDataDocument;
 import in.phamvu.cloudshareapi.document.PdfJobDocument;
 import in.phamvu.cloudshareapi.document.PdfJobStatus;
 import in.phamvu.cloudshareapi.document.PdfJobType;
 import in.phamvu.cloudshareapi.dto.PdfJobDTO;
+import in.phamvu.cloudshareapi.dto.PdfJobResultFile;
 import in.phamvu.cloudshareapi.dto.request.CompressPdfRequestDTO;
+import in.phamvu.cloudshareapi.dto.request.ConvertFromPdfRequestDTO;
+import in.phamvu.cloudshareapi.dto.request.ConvertToPdfRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.TranslatePdfRequestDTO;
 import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import in.phamvu.cloudshareapi.repository.PdfJobRepository;
 import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j(topic = "PDF-JOB-SERVICE")
 public class PdfJobService {
 
-    private static final int CREDIT_COST_PER_JOB = 1;
     private static final String DOCX_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final String PPTX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    private static final String XLSX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final PdfJobRepository pdfJobRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
-    private final UserCreditsService userCreditsService;
     private final PdfProcessingService pdfProcessingService;
     private final DocxTranslationService docxTranslationService;
+    private final LibreOfficeConversionService libreOfficeConversionService;
+    private final PdfImageConversionService pdfImageConversionService;
+    private final PdfResultCleanupService pdfResultCleanupService;
 
+    /**
+     * Null for anonymous callers - submitting/polling a job doesn't require an account, only
+     * downloading the result does (enforced by {@code SecurityConfig}, not here).
+     */
     private String getCurrentUserId() {
-        CustomUserDetails customUserDetails = (CustomUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+            return null;
+        }
         return customUserDetails.getId();
     }
 
     private FileMetaDataDocument getOwnedFile(String fileId, String userId) {
         FileMetaDataDocument file = fileMetaDataRepository.findById(fileId)
                 .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
-        if (!file.getUserId().equals(userId)) {
+        if (!Objects.equals(file.getUserId(), userId)) {
             throw new RuntimeException("You don't have permission to access file: " + fileId);
         }
         return file;
@@ -56,11 +80,72 @@ public class PdfJobService {
                 || (file.getName() != null && file.getName().toLowerCase().endsWith(".docx"));
     }
 
-    private void consumeJobCredit() {
-        if (!userCreditsService.hasEnoughCredits(CREDIT_COST_PER_JOB)) {
-            throw new RuntimeException("Not enough credits to submit PDF job. Please purchase more credits");
+    private boolean isPptx(FileMetaDataDocument file) {
+        return PPTX_CONTENT_TYPE.equalsIgnoreCase(file.getType())
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".pptx"));
+    }
+
+    private boolean isXlsx(FileMetaDataDocument file) {
+        return XLSX_CONTENT_TYPE.equalsIgnoreCase(file.getType())
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".xlsx"));
+    }
+
+    private boolean isHtml(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().toLowerCase().startsWith("text/html"))
+                || (file.getName() != null && (file.getName().toLowerCase().endsWith(".html")
+                        || file.getName().toLowerCase().endsWith(".htm")));
+    }
+
+    private boolean isPng(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().equalsIgnoreCase("image/png"))
+                || (file.getName() != null && file.getName().toLowerCase().endsWith(".png"));
+    }
+
+    private boolean isJpg(FileMetaDataDocument file) {
+        return (file.getType() != null && file.getType().toLowerCase().startsWith("image/jpeg"))
+                || (file.getName() != null && (file.getName().toLowerCase().endsWith(".jpg")
+                        || file.getName().toLowerCase().endsWith(".jpeg")));
+    }
+
+    private PdfJobType detectSourceJobType(FileMetaDataDocument file) {
+        if (isDocx(file)) {
+            return PdfJobType.WORD_TO_PDF;
         }
-        userCreditsService.consumeCredit();
+        if (isPptx(file)) {
+            return PdfJobType.PPTX_TO_PDF;
+        }
+        if (isXlsx(file)) {
+            return PdfJobType.EXCEL_TO_PDF;
+        }
+        if (isHtml(file)) {
+            return PdfJobType.HTML_TO_PDF;
+        }
+        if (isPng(file)) {
+            return PdfJobType.PNG_TO_PDF;
+        }
+        if (isJpg(file)) {
+            return PdfJobType.JPG_TO_PDF;
+        }
+        throw new RuntimeException("Unsupported file type for conversion to PDF: " + file.getName());
+    }
+
+    private PdfJobType targetFormatToJobType(ConvertFormat targetFormat) {
+        return switch (targetFormat) {
+            case WORD -> PdfJobType.PDF_TO_WORD;
+            case PNG -> PdfJobType.PDF_TO_PNG;
+            case JPG -> PdfJobType.PDF_TO_JPG;
+            case HTML -> PdfJobType.PDF_TO_HTML;
+        };
+    }
+
+    private void dispatchConversionJob(String jobId, String fileId, PdfJobType jobType) {
+        switch (jobType) {
+            case PDF_TO_PNG, PDF_TO_JPG ->
+                    pdfImageConversionService.processPdfToImageJob(jobId, fileId, jobType);
+            case PNG_TO_PDF, JPG_TO_PDF ->
+                    pdfImageConversionService.processImageToPdfJob(jobId, fileId, jobType);
+            default -> libreOfficeConversionService.processConversionJob(jobId, fileId, jobType);
+        }
     }
 
     public PdfJobDTO submitCompressJob(CompressPdfRequestDTO dto) {
@@ -76,7 +161,6 @@ public class PdfJobService {
         } else if (quality < 1 || quality > 100) {
             throw new RuntimeException("Quality must be between 1 and 100");
         }
-        consumeJobCredit();
 
         PdfJobDocument job = PdfJobDocument.builder()
                 .userId(userId)
@@ -87,7 +171,7 @@ public class PdfJobService {
                 .build();
         PdfJobDocument saved = pdfJobRepository.save(job);
 
-        pdfProcessingService.processCompressJob(saved.getId(), userId, dto.getFileId(), quality);
+        pdfProcessingService.processCompressJob(saved.getId(), dto.getFileId(), quality);
         return mapToDTO(saved);
     }
 
@@ -99,7 +183,6 @@ public class PdfJobService {
         }
 
         String sourceLanguage = StringUtils.hasText(dto.getSourceLanguage()) ? dto.getSourceLanguage() : "auto";
-        consumeJobCredit();
 
         PdfJobDocument job = PdfJobDocument.builder()
                 .userId(userId)
@@ -111,15 +194,96 @@ public class PdfJobService {
                 .build();
         PdfJobDocument saved = pdfJobRepository.save(job);
 
-        docxTranslationService.processTranslateJob(saved.getId(), userId, dto.getFileId(), sourceLanguage, dto.getTargetLanguage());
+        docxTranslationService.processTranslateJob(saved.getId(), dto.getFileId(), sourceLanguage, dto.getTargetLanguage());
         return mapToDTO(saved);
+    }
+
+    public PdfJobDTO submitConvertFromPdfJob(ConvertFromPdfRequestDTO dto) {
+        String userId = getCurrentUserId();
+        FileMetaDataDocument file = getOwnedFile(dto.getFileId(), userId);
+        if (!isPdf(file)) {
+            throw new RuntimeException("Selected file is not a PDF: " + file.getName());
+        }
+        PdfJobType jobType = targetFormatToJobType(dto.getTargetFormat());
+
+        PdfJobDocument job = PdfJobDocument.builder()
+                .userId(userId)
+                .status(PdfJobStatus.PENDING)
+                .jobType(jobType)
+                .inputFileId(dto.getFileId())
+                .build();
+        PdfJobDocument saved = pdfJobRepository.save(job);
+
+        dispatchConversionJob(saved.getId(), dto.getFileId(), jobType);
+        return mapToDTO(saved);
+    }
+
+    public PdfJobDTO submitConvertToPdfJob(ConvertToPdfRequestDTO dto) {
+        String userId = getCurrentUserId();
+        FileMetaDataDocument file = getOwnedFile(dto.getFileId(), userId);
+        PdfJobType jobType = detectSourceJobType(file);
+
+        PdfJobDocument job = PdfJobDocument.builder()
+                .userId(userId)
+                .status(PdfJobStatus.PENDING)
+                .jobType(jobType)
+                .inputFileId(dto.getFileId())
+                .build();
+        PdfJobDocument saved = pdfJobRepository.save(job);
+
+        dispatchConversionJob(saved.getId(), dto.getFileId(), jobType);
+        return mapToDTO(saved);
+    }
+
+    /**
+     * A job with no owner (submitted anonymously) is visible/pollable by anyone who has its id -
+     * job ids are unguessable, so knowing one is treated as proof it's "yours" for status
+     * purposes. A job created by a logged-in user stays private to that user.
+     */
+    private PdfJobDocument getVisibleJob(String jobId, String userId) {
+        PdfJobDocument job = pdfJobRepository.findById(jobId)
+                .orElseThrow(() -> new RuntimeException("Job not found"));
+        if (job.getUserId() != null && !job.getUserId().equals(userId)) {
+            throw new RuntimeException("Job not found");
+        }
+        return job;
     }
 
     public PdfJobDTO getJob(String jobId) {
         String userId = getCurrentUserId();
-        PdfJobDocument job = pdfJobRepository.findByIdAndUserId(jobId, userId)
-                .orElseThrow(() -> new RuntimeException("Job not found"));
+        PdfJobDocument job = getVisibleJob(jobId, userId);
         return mapToDTO(job);
+    }
+
+    /**
+     * Reads the job's result into memory, then immediately deletes the result (and, if unused
+     * elsewhere, the source) file - the result can only ever be downloaded once. See
+     * {@link PdfResultCleanupService}.
+     *
+     * <p>This endpoint always requires a logged-in caller ({@code SecurityConfig} enforces it).
+     * An anonymously-submitted job (no owner) can be claimed and downloaded by any authenticated
+     * user who knows its id - that's the whole point of gating downloads behind login.
+     */
+    public PdfJobResultFile downloadResult(String jobId) {
+        String userId = getCurrentUserId();
+        PdfJobDocument job = getVisibleJob(jobId, userId);
+
+        if (job.getStatus() != PdfJobStatus.COMPLETED || !StringUtils.hasText(job.getResultFilePath())) {
+            throw new RuntimeException("Job result is not available (not completed yet, already downloaded, or expired)");
+        }
+
+        Path path = Paths.get(job.getResultFilePath());
+        byte[] content;
+        try {
+            content = Files.readAllBytes(path);
+        } catch (IOException e) {
+            log.error("Result file for job {} is missing on disk at {}", jobId, path, e);
+            throw new RuntimeException("Result file is no longer available on the server");
+        }
+
+        PdfJobResultFile result = new PdfJobResultFile(content, job.getResultFileName(), job.getResultContentType());
+        pdfResultCleanupService.purgeJobFiles(job);
+        return result;
     }
 
     public List<PdfJobDTO> listJobs() {
@@ -136,7 +300,10 @@ public class PdfJobService {
                 .status(job.getStatus())
                 .jobType(job.getJobType())
                 .inputFileId(job.getInputFileId())
-                .resultFileId(job.getResultFileId())
+                .resultFileName(job.getResultFileName())
+                .resultContentType(job.getResultContentType())
+                .resultSize(job.getResultSize())
+                .resultExpiresAt(job.getResultExpiresAt())
                 .quality(job.getQuality())
                 .sourceLanguage(job.getSourceLanguage())
                 .targetLanguage(job.getTargetLanguage())

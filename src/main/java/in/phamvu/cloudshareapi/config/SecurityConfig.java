@@ -4,6 +4,7 @@ import in.phamvu.cloudshareapi.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -34,7 +35,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity.cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/webhooks/**", "/files/public/**",  "/health","/auth/**").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/webhooks/**", "/files/public/**", "/health", "/auth/**").permitAll()
+                        // Tools work without an account: upload a file, submit a job, poll its
+                        // status. Only downloading the result (and everything else - listing
+                        // jobs, "My Files", payments) requires login.
+                        .requestMatchers(HttpMethod.POST, "/files/upload").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/pdf/compress", "/pdf/translate", "/pdf/from-pdf", "/pdf/to-pdf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/pdf/jobs/*").permitAll()
+                        .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return httpSecurity.build();

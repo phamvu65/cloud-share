@@ -1,9 +1,7 @@
 package in.phamvu.cloudshareapi.controller;
 
-import in.phamvu.cloudshareapi.document.UserCredits;
 import in.phamvu.cloudshareapi.dto.FileMetaDataDTO;
 import in.phamvu.cloudshareapi.service.FileMetaDataService;
-import in.phamvu.cloudshareapi.service.UserCreditsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -14,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -29,24 +28,22 @@ import java.util.Map;
 public class FileController {
 
     private final FileMetaDataService fileMetadataService;
-    private final UserCreditsService userCreditsService;
 
     /**
-     * API to upload a list of files to the system.
-     * Returns the uploaded file metadata and the user's remaining credits.
+     * API to upload a list of files to the system. Works without an account - uploading is
+     * only ever a step towards running a tool (compress/translate/convert) or storing a file
+     * once logged in; it never requires or costs credits.
      */
     @PostMapping("/upload")
     public ResponseEntity<Map<String, Object>> uploadFiles(@RequestPart("files") MultipartFile[] files) throws IOException {
         log.info("Initiating file upload API for {} files", files.length);
 
         List<FileMetaDataDTO> uploadedList = fileMetadataService.uploadFiles(files);
-        UserCredits finalCredits = userCreditsService.getUserCredits();
 
         Map<String, Object> response = new HashMap<>();
         response.put("files", uploadedList);
-        response.put("remainingCredits", finalCredits.getCredits());
 
-        log.info("Successfully uploaded {} files. Remaining credits: {}", files.length, finalCredits.getCredits());
+        log.info("Successfully uploaded {} files", files.length);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -90,9 +87,21 @@ public class FileController {
 
         log.info("Successfully streaming file binary for download. File name: {}", downloadableFile.getName());
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentType(resolveContentType(downloadableFile.getType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + downloadableFile.getName() + "\"")
                 .body(resource);
+    }
+
+    private MediaType resolveContentType(String storedType) {
+        if (!StringUtils.hasText(storedType)) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        try {
+            return MediaType.parseMediaType(storedType);
+        } catch (Exception e) {
+            log.warn("Stored file type '{}' is not a valid media type, falling back to octet-stream", storedType);
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 
     /**
