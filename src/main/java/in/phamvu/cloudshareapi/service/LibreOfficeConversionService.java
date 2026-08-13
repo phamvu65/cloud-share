@@ -39,8 +39,11 @@ import java.util.zip.ZipOutputStream;
 /**
  * Runs Word/PPTX/Excel/HTML &lt;-&gt; PDF conversions via headless LibreOffice
  * ({@code soffice --convert-to}) on the {@code pdfTaskExecutor} pool. Never reads
- * {@code SecurityContextHolder} (async threads don't inherit it) - userId is always
- * passed in explicitly by the caller.
+ * {@code SecurityContextHolder} (async threads don't inherit it).
+ *
+ * <p>The result is written to a temp file referenced from the job document, never persisted as
+ * a {@code FileMetaDataDocument} - it is deleted after a single download or once it expires.
+ * See {@link PdfResultCleanupService}.
  */
 @Service
 @RequiredArgsConstructor
@@ -75,8 +78,6 @@ public class LibreOfficeConversionService {
      */
     private static final Set<PdfJobType> PDF_SOURCE_JOB_TYPES = EnumSet.of(PdfJobType.PDF_TO_WORD, PdfJobType.PDF_TO_HTML);
 
-    private static final int RESULT_TTL_HOURS = 1;
-
     static {
         TARGET_EXTENSION.put(PdfJobType.PDF_TO_WORD, "docx");
         TARGET_EXTENSION.put(PdfJobType.PDF_TO_HTML, "html");
@@ -98,6 +99,7 @@ public class LibreOfficeConversionService {
      * concurrently regardless of how many async threads are queued.
      */
     private static final int MAX_CONCURRENT_CONVERSIONS = 2;
+    private static final int RESULT_TTL_HOURS = 1;
     private final Semaphore sofficeSemaphore = new Semaphore(MAX_CONCURRENT_CONVERSIONS);
 
     private final PdfJobRepository pdfJobRepository;

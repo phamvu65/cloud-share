@@ -38,7 +38,11 @@ import java.util.UUID;
 /**
  * Runs PDF &lt;-&gt; PNG/JPG conversions with PDFBox (no external process) on the
  * {@code pdfTaskExecutor} pool. Never reads {@code SecurityContextHolder} (async
- * threads don't inherit it) - userId is always passed in explicitly by the caller.
+ * threads don't inherit it).
+ *
+ * <p>The result is written to a temp file referenced from the job document, never persisted as
+ * a {@code FileMetaDataDocument} - it is deleted after a single download or once it expires.
+ * See {@link PdfResultCleanupService}.
  */
 @Service
 @RequiredArgsConstructor

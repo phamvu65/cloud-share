@@ -108,19 +108,21 @@ public class PdfController {
     }
 
     /**
-     * API to download a completed job's result (owner-only). The result can only be
-     * downloaded once - it is deleted from the server right after this call succeeds.
+     * API to download a completed job's result (owner-only). The result is not stored
+     * permanently in the system - this call is destructive: the result (and, once unused, the
+     * source file) is deleted from the server right after being streamed back once. Results
+     * left undownloaded are purged automatically once they expire.
      */
     @GetMapping("/jobs/{id}/download")
     public ResponseEntity<ByteArrayResource> downloadJobResult(@PathVariable("id") String id) {
-        log.info("Initiating download PDF job result API for job ID: {}", id);
-        PdfJobResultFile file = pdfJobService.downloadResult(id);
-        log.info("Successfully streamed PDF job result for job ID: {}", id);
+        log.info("Initiating download for PDF job result. Job ID: {}", id);
+        PdfJobResultFile result = pdfJobService.downloadResult(id);
+        log.info("Successfully streamed and purged result for PDF job ID: {}", id);
         return ResponseEntity.ok()
-                .contentType(resolveContentType(file.contentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
-                .contentLength(file.content().length)
-                .body(new ByteArrayResource(file.content()));
+                .contentType(resolveContentType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + result.fileName() + "\"")
+                .contentLength(result.content().length)
+                .body(new ByteArrayResource(result.content()));
     }
 
     private MediaType resolveContentType(String storedType) {
@@ -130,7 +132,7 @@ public class PdfController {
         try {
             return MediaType.parseMediaType(storedType);
         } catch (Exception e) {
-            log.warn("Stored content type '{}' is not a valid media type, falling back to octet-stream", storedType);
+            log.warn("Stored result type '{}' is not a valid media type, falling back to octet-stream", storedType);
             return MediaType.APPLICATION_OCTET_STREAM;
         }
     }

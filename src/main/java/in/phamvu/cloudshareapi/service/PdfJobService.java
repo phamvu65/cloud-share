@@ -15,6 +15,7 @@ import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import in.phamvu.cloudshareapi.repository.PdfJobRepository;
 import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j(topic = "PDF-JOB-SERVICE")
 public class PdfJobService {
 
     private static final String DOCX_CONTENT_TYPE =
@@ -47,8 +50,8 @@ public class PdfJobService {
     private final PdfResultCleanupService pdfResultCleanupService;
 
     /**
-     * Null for anonymous callers - submitting/polling PDF jobs doesn't require an account,
-     * only downloading a result does (enforced by {@code SecurityConfig}, not here).
+     * Null for anonymous callers - submitting/polling a job doesn't require an account, only
+     * downloading the result does (enforced by {@code SecurityConfig}, not here).
      */
     private String getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -233,12 +236,11 @@ public class PdfJobService {
     }
 
     /**
-     * Jobs submitted anonymously have a null {@code userId} and, like submitting/polling them,
-     * are accessible to anyone who knows the job ID - login is only required to reach these
-     * endpoints in the first place (see {@code SecurityConfig}), not to own the job. Jobs
-     * submitted by a signed-in user are locked to that same user.
+     * A job with no owner (submitted anonymously) is visible/pollable by anyone who has its id -
+     * job ids are unguessable, so knowing one is treated as proof it's "yours" for status
+     * purposes. A job created by a logged-in user stays private to that user.
      */
-    private PdfJobDocument getAccessibleJob(String jobId, String userId) {
+    private PdfJobDocument getVisibleJob(String jobId, String userId) {
         PdfJobDocument job = pdfJobRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("Job not found"));
         if (job.getUserId() != null && !job.getUserId().equals(userId)) {
@@ -249,27 +251,34 @@ public class PdfJobService {
 
     public PdfJobDTO getJob(String jobId) {
         String userId = getCurrentUserId();
-        PdfJobDocument job = getAccessibleJob(jobId, userId);
+        PdfJobDocument job = getVisibleJob(jobId, userId);
         return mapToDTO(job);
     }
 
     /**
-     * Streams a completed job's result and, once read, deletes the temp result file (and the
-     * source file, if nothing else needs it) - the result can only be downloaded once. See
-     * {@link PdfResultCleanupService#purgeJobFiles(PdfJobDocument)}.
+     * Reads the job's result into memory, then immediately deletes the result (and, if unused
+     * elsewhere, the source) file - the result can only ever be downloaded once. See
+     * {@link PdfResultCleanupService}.
+     *
+     * <p>This endpoint always requires a logged-in caller ({@code SecurityConfig} enforces it).
+     * An anonymously-submitted job (no owner) can be claimed and downloaded by any authenticated
+     * user who knows its id - that's the whole point of gating downloads behind login.
      */
     public PdfJobResultFile downloadResult(String jobId) {
         String userId = getCurrentUserId();
-        PdfJobDocument job = getAccessibleJob(jobId, userId);
+        PdfJobDocument job = getVisibleJob(jobId, userId);
+
         if (job.getStatus() != PdfJobStatus.COMPLETED || !StringUtils.hasText(job.getResultFilePath())) {
-            throw new RuntimeException("Job result is not available for download");
+            throw new RuntimeException("Job result is not available (not completed yet, already downloaded, or expired)");
         }
 
+        Path path = Paths.get(job.getResultFilePath());
         byte[] content;
         try {
-            content = Files.readAllBytes(Paths.get(job.getResultFilePath()));
+            content = Files.readAllBytes(path);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to read job result file: " + e.getMessage(), e);
+            log.error("Result file for job {} is missing on disk at {}", jobId, path, e);
+            throw new RuntimeException("Result file is no longer available on the server");
         }
 
         PdfJobResultFile result = new PdfJobResultFile(content, job.getResultFileName(), job.getResultContentType());
