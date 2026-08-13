@@ -12,7 +12,7 @@
 	<artifactId>cloudshareapi</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>cloudshareapi</name>
-	<description>Spring Boot REST API</description>
+	<description>FileStation backend REST API</description>
 	<url/>
 	<licenses>
 		<license/>
