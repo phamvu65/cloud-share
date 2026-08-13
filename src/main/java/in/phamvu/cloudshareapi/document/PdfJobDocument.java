@@ -22,9 +22,24 @@ public class PdfJobDocument {
     private String id;
     private String userId;
     private PdfJobStatus status;
+    private PdfJobType jobType;
     private String inputFileId;
-    private String resultFileId;
+
+    /**
+     * Result is never persisted as a permanent {@code FileMetaDataDocument} - it lives only as
+     * a temp file on disk, referenced here, until it is downloaded once or {@link #resultExpiresAt}
+     * passes (whichever comes first). {@code resultFilePath} is an on-disk path and is intentionally
+     * never exposed to clients (see {@link in.phamvu.cloudshareapi.dto.PdfJobDTO}).
+     */
+    private String resultFilePath;
+    private String resultFileName;
+    private String resultContentType;
+    private Long resultSize;
+    private LocalDateTime resultExpiresAt;
+
     private Integer quality;
+    private String sourceLanguage;
+    private String targetLanguage;
     private String errorMessage;
 
     @CreatedDate

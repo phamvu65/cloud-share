@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface FileMetaDataRepository extends MongoRepository<FileMetaDataDocument, String> {
-    List<FileMetaDataDocument> findByUserId(String userId);
+    List<FileMetaDataDocument> findByUserIdOrderByUploadedAtDesc(String userId);
 
     Optional<FileMetaDataDocument> findByIdAndIsPublic(String id, Boolean isPublic);
 }
