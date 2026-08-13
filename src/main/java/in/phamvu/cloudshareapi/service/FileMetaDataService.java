@@ -7,6 +7,7 @@ import in.phamvu.cloudshareapi.repository.FileMetaDataRepository;
 import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -21,6 +22,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -30,25 +32,29 @@ import java.util.stream.Collectors;
 public class FileMetaDataService {
 
     private final FileMetaDataRepository fileMetaDataRepository;
-    private final UserCreditsService userCreditsService;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
 
+    /**
+     * Null for anonymous callers - uploading and running PDF tools doesn't require an account,
+     * only downloading a job result does (enforced by {@code SecurityConfig}, not here).
+     */
     private String getCurrentUserId(){
-        CustomUserDetails customUserDetails = (CustomUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+            return null;
+        }
         return customUserDetails.getId();
     }
 
     public List<FileMetaDataDTO> uploadFiles(MultipartFile files[]) throws IOException {
         String currentUserId = getCurrentUserId();
 
-        if (!userCreditsService.hasEnoughCredits(files.length)) {
-            throw new RuntimeException("Not enough credits to upload files. Please purchase more credits");
-        }
-
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(uploadPath);
+
+        List<FileMetaDataDTO> uploaded = new ArrayList<>();
         for (MultipartFile file : files) {
             String fileName = UUID.randomUUID()+"."+ StringUtils.getFilenameExtension(file.getOriginalFilename());
             Path targetLocation = uploadPath.resolve(fileName);
@@ -64,11 +70,9 @@ public class FileMetaDataService {
                     .uploadedAt(LocalDateTime.now())
                     .build();
 
-            userCreditsService.consumeCredit();
-            fileMetaDataRepository.save(fileMetadata);
-
+            uploaded.add(mapToDTO(fileMetaDataRepository.save(fileMetadata)));
         }
-        return getFiles();
+        return uploaded;
     }
 
     public List<FileMetaDataDTO> getFiles(){
@@ -90,7 +94,7 @@ public class FileMetaDataService {
     public FileMetaDataDTO getDownloadableFile(String fileId) {
         String currentUserId = getCurrentUserId();
         FileMetaDataDocument file = fileMetaDataRepository.findById(fileId).orElseThrow(() -> new RuntimeException("File not found"));
-        if (!file.getUserId().equals(currentUserId) && !file.getIsPublic()) {
+        if (!Objects.equals(file.getUserId(), currentUserId) && !file.getIsPublic()) {
             throw new RuntimeException("You don't have permission to access this file");
         }
         return mapToDTO(file);
@@ -99,7 +103,7 @@ public class FileMetaDataService {
     public void deleteFile(String fileId) {
         String currentUserId = getCurrentUserId();
         FileMetaDataDocument file = fileMetaDataRepository.findById(fileId).orElseThrow(() -> new RuntimeException("File not found"));
-        if (!file.getUserId().equals(currentUserId)) {
+        if (!Objects.equals(file.getUserId(), currentUserId)) {
             throw new RuntimeException("You don't have permission to delete this file");
         }
 
@@ -117,7 +121,7 @@ public class FileMetaDataService {
         FileMetaDataDocument file = fileMetaDataRepository.findById(fileId)
                 .orElseThrow(() -> new RuntimeException("File not found"));
 
-        if (!file.getUserId().equals(currentUserId)) {
+        if (!Objects.equals(file.getUserId(), currentUserId)) {
             throw new RuntimeException("You don't have permission to toggle public status of this file");
         }
         file.setIsPublic(!file.getIsPublic());

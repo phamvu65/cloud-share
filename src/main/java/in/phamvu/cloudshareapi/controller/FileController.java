@@ -2,6 +2,7 @@ package in.phamvu.cloudshareapi.controller;
 
 import in.phamvu.cloudshareapi.document.UserCredits;
 import in.phamvu.cloudshareapi.dto.FileMetaDataDTO;
+import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import in.phamvu.cloudshareapi.service.FileMetaDataService;
 import in.phamvu.cloudshareapi.service.UserCreditsService;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
@@ -33,21 +36,26 @@ public class FileController {
     private final UserCreditsService userCreditsService;
 
     /**
-     * API to upload a list of files to the system.
-     * Returns the uploaded file metadata and the user's remaining credits.
+     * API to upload a list of files to the system. Works anonymously (see
+     * {@code SecurityConfig}) - remaining credits are only included in the response when
+     * the caller is logged in, since anonymous uploads aren't tied to any credits account.
      */
     @PostMapping("/upload")
     public ResponseEntity<Map<String, Object>> uploadFiles(@RequestPart("files") MultipartFile[] files) throws IOException {
         log.info("Initiating file upload API for {} files", files.length);
 
         List<FileMetaDataDTO> uploadedList = fileMetadataService.uploadFiles(files);
-        UserCredits finalCredits = userCreditsService.getUserCredits();
 
         Map<String, Object> response = new HashMap<>();
         response.put("files", uploadedList);
-        response.put("remainingCredits", finalCredits.getCredits());
 
-        log.info("Successfully uploaded {} files. Remaining credits: {}", files.length, finalCredits.getCredits());
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails) {
+            UserCredits finalCredits = userCreditsService.getUserCredits();
+            response.put("remainingCredits", finalCredits.getCredits());
+        }
+
+        log.info("Successfully uploaded {} files", files.length);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

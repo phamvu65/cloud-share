@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -74,6 +75,8 @@ public class LibreOfficeConversionService {
      */
     private static final Set<PdfJobType> PDF_SOURCE_JOB_TYPES = EnumSet.of(PdfJobType.PDF_TO_WORD, PdfJobType.PDF_TO_HTML);
 
+    private static final int RESULT_TTL_HOURS = 1;
+
     static {
         TARGET_EXTENSION.put(PdfJobType.PDF_TO_WORD, "docx");
         TARGET_EXTENSION.put(PdfJobType.PDF_TO_HTML, "html");
@@ -110,7 +113,7 @@ public class LibreOfficeConversionService {
     private long timeoutSeconds;
 
     @Async("pdfTaskExecutor")
-    public void processConversionJob(String jobId, String userId, String fileId, PdfJobType jobType) {
+    public void processConversionJob(String jobId, String fileId, PdfJobType jobType) {
         PdfJobDocument job = pdfJobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.error("Conversion job {} not found, aborting processing", jobId);
@@ -133,7 +136,6 @@ public class LibreOfficeConversionService {
             }
             boolean useWriterPdfImportFilter = PDF_SOURCE_JOB_TYPES.contains(jobType);
 
-            String resultId;
             Path outDir = runSoffice(sourceFile, targetExtension, useWriterPdfImportFilter);
             try {
                 File[] produced = outDir.toFile().listFiles();
@@ -146,20 +148,19 @@ public class LibreOfficeConversionService {
                     String outputName = UUID.randomUUID() + "." + targetExtension;
                     Path targetPath = uploadPath.resolve(outputName);
                     Files.move(produced[0].toPath(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-                    resultId = saveOutputFile(userId, targetPath, outputName, targetContentType);
+                    applyResult(job, source.getName(), targetPath, targetExtension, targetContentType);
                 } else {
                     // Some exports (e.g. HTML) split into a main file plus separate embedded
                     // image assets - package everything together so nothing gets dropped.
                     String outputName = UUID.randomUUID() + ".zip";
                     Path targetPath = uploadPath.resolve(outputName);
                     zipFiles(produced, targetPath);
-                    resultId = saveOutputFile(userId, targetPath, outputName, ZIP_CONTENT_TYPE);
+                    applyResult(job, source.getName(), targetPath, "zip", ZIP_CONTENT_TYPE);
                 }
             } finally {
                 deleteQuietly(outDir.toFile());
             }
 
-            job.setResultFileId(resultId);
             job.setStatus(PdfJobStatus.COMPLETED);
             job.setErrorMessage(null);
         } catch (Exception e) {
@@ -264,16 +265,21 @@ public class LibreOfficeConversionService {
         return uploadPath;
     }
 
-    private String saveOutputFile(String userId, Path filePath, String displayName, String contentType) throws IOException {
-        FileMetaDataDocument document = FileMetaDataDocument.builder()
-                .userId(userId)
-                .fileLocation(filePath.toString())
-                .name(displayName)
-                .size(Files.size(filePath))
-                .type(contentType)
-                .isPublic(false)
-                .build();
-        return fileMetaDataRepository.save(document).getId();
+    private void applyResult(PdfJobDocument job, String sourceName, Path targetPath, String extension, String contentType) throws IOException {
+        job.setResultFilePath(targetPath.toString());
+        job.setResultFileName(buildResultFileName(sourceName, extension));
+        job.setResultContentType(contentType);
+        job.setResultSize(Files.size(targetPath));
+        job.setResultExpiresAt(LocalDateTime.now().plusHours(RESULT_TTL_HOURS));
+    }
+
+    private String buildResultFileName(String sourceName, String extension) {
+        String base = (sourceName != null && !sourceName.isBlank()) ? sourceName : "result";
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        return base + "." + extension;
     }
 
     private void markProcessing(PdfJobDocument job) {

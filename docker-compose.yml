@@ -1,14 +1,37 @@
 services:
-  libretranslate:
-    image: libretranslate/libretranslate
-    container_name: libretranslate
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
     restart: unless-stopped
     ports:
-      - "5000:5000"
-    environment:
-      - LT_LOAD_ONLY=en,vi
+      - "11434:11434"
     volumes:
-      - lt-models:/home/libretranslate/.local
+      - ollama-models:/root/.ollama
+    # Pulls the model once into the persisted volume on first start; subsequent
+    # restarts skip straight to "ollama serve" since the model is already cached.
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen2.5:3b && wait"]
+
+  app:
+    build: .
+    container_name: cloudshareapi
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Inside the Docker network, the sidecar is reachable by service name, not localhost.
+      - OLLAMA_API_URL=http://ollama:11434/api/chat
+      - OLLAMA_MODEL=qwen2.5:3b
+      # .env's SPRING_DATA_MONGODB_URI points at localhost for native (mvn) dev runs;
+      # override here since "localhost" inside this container means the container itself.
+      # If you use MongoDB Atlas (mongodb+srv://...) instead, delete this line - .env's value works as-is.
+      - SPRING_DATA_MONGODB_URI=mongodb://host.docker.internal:27017/cloudshareapi
+      # soffice ships inside this image and is already on PATH - no override needed.
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./upload:/app/upload
+    depends_on:
+      - ollama
 
 volumes:
-  lt-models:
+  ollama-models:

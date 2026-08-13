@@ -25,19 +25,25 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Runs the actual PDFBox compression work on the {@code pdfTaskExecutor} pool. Never reads
- * {@code SecurityContextHolder} (async threads don't inherit it) - userId is always
- * passed in explicitly by the caller.
+ * {@code SecurityContextHolder} (async threads don't inherit it).
+ *
+ * <p>The result is written to a temp file referenced from the job document, never persisted as
+ * a {@code FileMetaDataDocument} - it is deleted after a single download or once it expires.
+ * See {@link PdfResultCleanupService}.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j(topic = "PDF-PROCESSING")
 public class PdfProcessingService {
+
+    private static final int RESULT_TTL_HOURS = 1;
 
     private final PdfJobRepository pdfJobRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
@@ -46,7 +52,7 @@ public class PdfProcessingService {
     private String uploadDir;
 
     @Async("pdfTaskExecutor")
-    public void processCompressJob(String jobId, String userId, String fileId, int quality) {
+    public void processCompressJob(String jobId, String fileId, int quality) {
         PdfJobDocument job = pdfJobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.error("Compress job {} not found, aborting processing", jobId);
@@ -62,7 +68,6 @@ public class PdfProcessingService {
                 throw new RuntimeException("Source file is missing on disk: " + source.getFileLocation());
             }
 
-            String resultId;
             PDDocument document;
             try {
                 document = Loader.loadPDF(sourceFile);
@@ -79,10 +84,9 @@ public class PdfProcessingService {
                 String outputName = UUID.randomUUID() + ".pdf";
                 Path targetPath = uploadPath.resolve(outputName);
                 document.save(targetPath.toFile());
-                resultId = saveOutputFile(userId, targetPath, outputName);
+                applyResult(job, source.getName(), targetPath, "pdf", "application/pdf");
             }
 
-            job.setResultFileId(resultId);
             job.setStatus(PdfJobStatus.COMPLETED);
             job.setErrorMessage(null);
         } catch (Exception e) {
@@ -129,16 +133,21 @@ public class PdfProcessingService {
         return uploadPath;
     }
 
-    private String saveOutputFile(String userId, Path filePath, String displayName) throws IOException {
-        FileMetaDataDocument document = FileMetaDataDocument.builder()
-                .userId(userId)
-                .fileLocation(filePath.toString())
-                .name(displayName)
-                .size(Files.size(filePath))
-                .type("application/pdf")
-                .isPublic(false)
-                .build();
-        return fileMetaDataRepository.save(document).getId();
+    private void applyResult(PdfJobDocument job, String sourceName, Path targetPath, String extension, String contentType) throws IOException {
+        job.setResultFilePath(targetPath.toString());
+        job.setResultFileName(buildResultFileName(sourceName, extension));
+        job.setResultContentType(contentType);
+        job.setResultSize(Files.size(targetPath));
+        job.setResultExpiresAt(LocalDateTime.now().plusHours(RESULT_TTL_HOURS));
+    }
+
+    private String buildResultFileName(String sourceName, String extension) {
+        String base = (sourceName != null && !sourceName.isBlank()) ? sourceName : "result";
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        return base + "." + extension;
     }
 
     private void markProcessing(PdfJobDocument job) {

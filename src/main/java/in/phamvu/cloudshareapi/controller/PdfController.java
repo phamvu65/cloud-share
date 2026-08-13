@@ -1,6 +1,7 @@
 package in.phamvu.cloudshareapi.controller;
 
 import in.phamvu.cloudshareapi.dto.PdfJobDTO;
+import in.phamvu.cloudshareapi.dto.PdfJobResultFile;
 import in.phamvu.cloudshareapi.dto.request.CompressPdfRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.ConvertFromPdfRequestDTO;
 import in.phamvu.cloudshareapi.dto.request.ConvertToPdfRequestDTO;
@@ -9,8 +10,12 @@ import in.phamvu.cloudshareapi.service.PdfJobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -100,5 +105,33 @@ public class PdfController {
         log.info("Initiating fetch PDF jobs API for the current user");
         List<PdfJobDTO> jobs = pdfJobService.listJobs();
         return ResponseEntity.ok(jobs);
+    }
+
+    /**
+     * API to download a completed job's result (owner-only). The result can only be
+     * downloaded once - it is deleted from the server right after this call succeeds.
+     */
+    @GetMapping("/jobs/{id}/download")
+    public ResponseEntity<ByteArrayResource> downloadJobResult(@PathVariable("id") String id) {
+        log.info("Initiating download PDF job result API for job ID: {}", id);
+        PdfJobResultFile file = pdfJobService.downloadResult(id);
+        log.info("Successfully streamed PDF job result for job ID: {}", id);
+        return ResponseEntity.ok()
+                .contentType(resolveContentType(file.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.fileName() + "\"")
+                .contentLength(file.content().length)
+                .body(new ByteArrayResource(file.content()));
+    }
+
+    private MediaType resolveContentType(String storedType) {
+        if (!StringUtils.hasText(storedType)) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        try {
+            return MediaType.parseMediaType(storedType);
+        } catch (Exception e) {
+            log.warn("Stored content type '{}' is not a valid media type, falling back to octet-stream", storedType);
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 }

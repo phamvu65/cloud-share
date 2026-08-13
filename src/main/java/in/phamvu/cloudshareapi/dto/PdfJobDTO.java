@@ -20,7 +20,10 @@ public class PdfJobDTO {
     private PdfJobStatus status;
     private PdfJobType jobType;
     private String inputFileId;
-    private String resultFileId;
+    private String resultFileName;
+    private String resultContentType;
+    private Long resultSize;
+    private LocalDateTime resultExpiresAt;
     private Integer quality;
     private String sourceLanguage;
     private String targetLanguage;

@@ -8,10 +8,10 @@ import in.phamvu.cloudshareapi.document.UserDocument;
 import in.phamvu.cloudshareapi.dto.PaymentDTO;
 import in.phamvu.cloudshareapi.repository.PaymentTransactionRepository;
 import in.phamvu.cloudshareapi.repository.UserRepository;
+import in.phamvu.cloudshareapi.security.CustomUserDetails;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,8 +37,8 @@ public class PaymentService {
 
     public PaymentDTO createOrder(PaymentDTO paymentDTO) {
         try {
-            UserDetails userDetails = (UserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            String clerkId = userDetails.getUsername();
+            CustomUserDetails userDetails = (CustomUserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            String clerkId = userDetails.getId();
 
             UserDocument userDocument = userRepository.findById(clerkId).orElseThrow(() -> new RuntimeException("User not found"));
 

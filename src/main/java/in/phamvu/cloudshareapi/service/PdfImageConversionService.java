@@ -30,6 +30,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import java.util.UUID;
@@ -47,6 +48,7 @@ public class PdfImageConversionService {
     private static final String ZIP_CONTENT_TYPE = "application/zip";
     private static final String PDF_CONTENT_TYPE = "application/pdf";
     private static final int RENDER_DPI = 150;
+    private static final int RESULT_TTL_HOURS = 1;
 
     private final PdfJobRepository pdfJobRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
@@ -55,7 +57,7 @@ public class PdfImageConversionService {
     private String uploadDir;
 
     @Async("pdfTaskExecutor")
-    public void processPdfToImageJob(String jobId, String userId, String fileId, PdfJobType jobType) {
+    public void processPdfToImageJob(String jobId, String fileId, PdfJobType jobType) {
         PdfJobDocument job = pdfJobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.error("PDF-to-image job {} not found, aborting processing", jobId);
@@ -73,7 +75,6 @@ public class PdfImageConversionService {
 
             String formatName = jobType == PdfJobType.PDF_TO_JPG ? "jpg" : "png";
 
-            String resultId;
             PDDocument document;
             try {
                 document = Loader.loadPDF(sourceFile);
@@ -97,10 +98,9 @@ public class PdfImageConversionService {
                         zos.closeEntry();
                     }
                 }
-                resultId = saveOutputFile(userId, targetPath, outputName, ZIP_CONTENT_TYPE);
+                applyResult(job, source.getName(), targetPath, "zip", ZIP_CONTENT_TYPE);
             }
 
-            job.setResultFileId(resultId);
             job.setStatus(PdfJobStatus.COMPLETED);
             job.setErrorMessage(null);
         } catch (Exception e) {
@@ -112,7 +112,7 @@ public class PdfImageConversionService {
     }
 
     @Async("pdfTaskExecutor")
-    public void processImageToPdfJob(String jobId, String userId, String fileId, PdfJobType jobType) {
+    public void processImageToPdfJob(String jobId, String fileId, PdfJobType jobType) {
         PdfJobDocument job = pdfJobRepository.findById(jobId).orElse(null);
         if (job == null) {
             log.error("Image-to-PDF job {} not found, aborting processing", jobId);
@@ -133,7 +133,6 @@ public class PdfImageConversionService {
                 throw new RuntimeException("This file could not be read as a valid image (it may be corrupted or in an unsupported format)");
             }
 
-            String resultId;
             try (PDDocument document = new PDDocument()) {
                 PDPage page = new PDPage(new PDRectangle(image.getWidth(), image.getHeight()));
                 document.addPage(page);
@@ -150,10 +149,9 @@ public class PdfImageConversionService {
                 String outputName = UUID.randomUUID() + ".pdf";
                 Path targetPath = uploadPath.resolve(outputName);
                 document.save(targetPath.toFile());
-                resultId = saveOutputFile(userId, targetPath, outputName, PDF_CONTENT_TYPE);
+                applyResult(job, source.getName(), targetPath, "pdf", PDF_CONTENT_TYPE);
             }
 
-            job.setResultFileId(resultId);
             job.setStatus(PdfJobStatus.COMPLETED);
             job.setErrorMessage(null);
         } catch (Exception e) {
@@ -170,16 +168,21 @@ public class PdfImageConversionService {
         return uploadPath;
     }
 
-    private String saveOutputFile(String userId, Path filePath, String displayName, String contentType) throws IOException {
-        FileMetaDataDocument document = FileMetaDataDocument.builder()
-                .userId(userId)
-                .fileLocation(filePath.toString())
-                .name(displayName)
-                .size(Files.size(filePath))
-                .type(contentType)
-                .isPublic(false)
-                .build();
-        return fileMetaDataRepository.save(document).getId();
+    private void applyResult(PdfJobDocument job, String sourceName, Path targetPath, String extension, String contentType) throws IOException {
+        job.setResultFilePath(targetPath.toString());
+        job.setResultFileName(buildResultFileName(sourceName, extension));
+        job.setResultContentType(contentType);
+        job.setResultSize(Files.size(targetPath));
+        job.setResultExpiresAt(LocalDateTime.now().plusHours(RESULT_TTL_HOURS));
+    }
+
+    private String buildResultFileName(String sourceName, String extension) {
+        String base = (sourceName != null && !sourceName.isBlank()) ? sourceName : "result";
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        return base + "." + extension;
     }
 
     private void markProcessing(PdfJobDocument job) {
