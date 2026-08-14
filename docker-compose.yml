@@ -4,7 +4,9 @@ services:
     container_name: ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      # Bound to localhost only - Nginx is the sole public entrypoint, and this
+      # sidecar has no auth of its own so it must never be reachable directly.
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
     # Pulls the model once into the persisted volume on first start; subsequent
@@ -21,13 +23,12 @@ services:
       # Inside the Docker network, the sidecar is reachable by service name, not localhost.
       - OLLAMA_API_URL=http://ollama:11434/api/chat
       - OLLAMA_MODEL=qwen2.5:3b
-      # .env's SPRING_DATA_MONGODB_URI points at localhost for native (mvn) dev runs;
-      # override here since "localhost" inside this container means the container itself.
-      # If you use MongoDB Atlas (mongodb+srv://...) instead, delete this line - .env's value works as-is.
-      - SPRING_DATA_MONGODB_URI=mongodb://host.docker.internal:27017/cloudshareapi
       # soffice ships inside this image and is already on PATH - no override needed.
+      # SPRING_DATA_MONGODB_URI comes from .env - point it at MongoDB Atlas
+      # (mongodb+srv://...) in production instead of overriding it here.
     ports:
-      - "8080:8080"
+      # Bound to localhost only - Nginx reverse-proxies 443 -> 127.0.0.1:8080.
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./upload:/app/upload
     depends_on:
