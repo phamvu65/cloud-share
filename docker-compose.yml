@@ -14,7 +14,8 @@ services:
     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull qwen2.5:3b && wait"]
 
   app:
-    build: .
+#    build: .
+    image: ghcr.io/phamvu65/cloud-share:latest
     container_name: cloudshareapi
     restart: unless-stopped
     env_file:
