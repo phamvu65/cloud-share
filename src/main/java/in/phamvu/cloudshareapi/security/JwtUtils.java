@@ -94,7 +94,7 @@ public class JwtUtils {
                     .build()
                     .parseClaimsJws(authToken);
             return true;
-        }catch (SecurityException | MalformedJwtException e){
+        }catch (SecurityException | io.jsonwebtoken.security.SecurityException | MalformedJwtException e){
             log.error("Invalid JWT token: {}", e.getMessage());
         }catch (ExpiredJwtException e){
             log.error("JWT token is expired: {}", e.getMessage());
