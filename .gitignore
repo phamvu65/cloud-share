@@ -41,3 +41,6 @@ upload-dir/
 
 # Ansible: real inventory has the VPS host/IP, keep only the .example template tracked
 ansible/inventory.ini
+
+# Local work log, not meant to be pushed
+WORK_LOG.md

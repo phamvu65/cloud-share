@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Scrapes the app container directly over the internal Docker network - never
+  # goes through nginx, so the public "deny" block on this path (see
+  # ansible/roles/nginx/templates/vhost.conf.j2) doesn't affect this.
+  - job_name: cloudshareapi
+    metrics_path: /api/v1.0/actuator/prometheus
+    static_configs:
+      - targets: ["app:8080"]
