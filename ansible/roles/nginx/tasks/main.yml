@@ -1,0 +1,62 @@
+---
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: true
+
+- name: Ensure nginx is enabled and running
+  systemd:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Check whether a vhost file already exists per domain
+  stat:
+    path: "/etc/nginx/sites-available/{{ item }}"
+  loop: "{{ domains }}"
+  register: vhost_stat
+
+# Only writes the plain HTTP vhost the FIRST time. On later runs the file
+# already exists (certbot has since rewritten it to add the 443/SSL server
+# block) and this task is skipped, so we never clobber certbot's edits.
+- name: Bootstrap plain HTTP vhost (skipped once certbot owns the file)
+  vars:
+    domain: "{{ item.item }}"
+  template:
+    src: vhost.conf.j2
+    dest: "/etc/nginx/sites-available/{{ item.item }}"
+    mode: "0644"
+  loop: "{{ vhost_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not item.stat.exists
+
+- name: Enable vhost symlinks
+  file:
+    src: "/etc/nginx/sites-available/{{ item }}"
+    dest: "/etc/nginx/sites-enabled/{{ item }}"
+    state: link
+  loop: "{{ domains }}"
+  notify: reload nginx
+
+- name: Remove legacy/misconfigured vhost files (sites-available)
+  file:
+    path: "/etc/nginx/sites-available/{{ item }}"
+    state: absent
+  loop: "{{ legacy_nginx_vhost_files | default([]) }}"
+  notify: reload nginx
+
+- name: Remove legacy/misconfigured vhost files (sites-enabled)
+  file:
+    path: "/etc/nginx/sites-enabled/{{ item }}"
+    state: absent
+  loop: "{{ legacy_nginx_vhost_files | default([]) }}"
+  notify: reload nginx
+
+- name: Remove the vhost file nginx ships that shadows our virtual hosts (default_server)
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: remove_default_nginx_site | default(false)
+  notify: reload nginx

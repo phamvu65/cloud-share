@@ -38,3 +38,6 @@ upload-dir/
 
 # Environment variables
 .env
+
+# Ansible: real inventory has the VPS host/IP, keep only the .example template tracked
+ansible/inventory.ini

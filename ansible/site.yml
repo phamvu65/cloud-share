@@ -1,0 +1,10 @@
+---
+- name: Provision cloudshareapi VPS (docker, nginx, certbot, firewall)
+  hosts: vps
+  vars_files:
+    - group_vars/vps.yml
+  roles:
+    - docker
+    - firewall
+    - nginx
+    - certbot

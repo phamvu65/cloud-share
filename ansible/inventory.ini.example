@@ -1,0 +1,6 @@
+# Copy this file to inventory.ini (gitignored) and fill in the real values.
+# ansible_host: VPS_HOST secret value (same one CI uses)
+# ansible_ssh_private_key_file: the dedicated Ansible keypair, NOT cloudshare_deploy
+#   (that one is scoped to CI's docker-only deploy step) and NOT your personal key.
+[vps]
+thuevpsgiare ansible_host=YOUR_VPS_IP_OR_HOSTNAME ansible_user=deploy ansible_ssh_private_key_file=~/.ssh/cloudshare_ansible

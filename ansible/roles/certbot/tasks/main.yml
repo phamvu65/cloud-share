@@ -1,0 +1,37 @@
+---
+- name: Install certbot + nginx plugin
+  apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: true
+
+# certbot --nginx rewrites the vhost file in place to add the 443/SSL server
+# block and the 80->443 redirect (this is what turned the plain HTTP template
+# into the "managed by Certbot" blocks you see in the live config today).
+#
+# No `creates` guard on the cert path here on purpose: if the vhost file was
+# just (re)created (e.g. the filestation.vuxph.xyz rename cleanup) but a valid
+# cert for the domain already exists, certbot --nginx still needs to run once
+# more to wire the existing cert into the *new* file — it reuses the existing
+# certificate lineage instead of requesting a new one, so this is still safe
+# to run every time (no Let's Encrypt rate-limit risk). changed_when below
+# keeps Ansible's changed-count honest by reading certbot's own "nothing to
+# do" message rather than assuming every run changed something.
+- name: Ensure certbot manages the nginx vhost for each domain
+  command: >
+    certbot --nginx
+    -d {{ item }}
+    --non-interactive --agree-tos
+    -m {{ letsencrypt_email }}
+    --redirect
+  loop: "{{ domains }}"
+  register: certbot_result
+  changed_when: "'Certificate not yet due for renewal' not in certbot_result.stdout"
+
+- name: Ensure certbot renewal timer is enabled
+  systemd:
+    name: certbot.timer
+    enabled: true
+    state: started

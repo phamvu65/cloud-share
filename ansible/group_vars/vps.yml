@@ -1,0 +1,31 @@
+---
+deploy_user: deploy
+app_upstream_port: 8080
+letsencrypt_email: "phamvu05042003@gmail.com"
+
+# One nginx vhost + Let's Encrypt cert per domain, all proxying to the same
+# app instance. Add a new domain here and re-run the playbook to onboard it.
+#
+# filestation.vuxph.xyz is intentionally NOT listed here: its DNS currently
+# resolves to Vercel (confirmed 2026-08-16 via `curl -I`, response had
+# `server: Vercel`), not this VPS, so there's nothing for this playbook to
+# provision for it. If DNS is ever pointed back at this VPS, add it back here.
+domains:
+  - api.vuxph.xyz
+
+# /etc/nginx/sites-{available,enabled}/cloudshareapi is a leftover from before
+# the vuxph.xyz -> filestation.vuxph.xyz rename: it has `server_name vuxph.xyz`
+# but points at the filestation.vuxph.xyz cert, so anyone hitting vuxph.xyz got
+# a hostname-mismatched cert warning. This is broken/dead regardless of where
+# filestation.vuxph.xyz's DNS points today, so it's still removed even though
+# filestation.vuxph.xyz itself isn't in `domains` above (confirmed with the
+# user 2026-08-16 that vuxph.xyz bare doesn't need to be served separately).
+#
+# filestation.vuxph.xyz is here too: an earlier playbook run (before this
+# file was updated to drop it from `domains`) already created this vhost +
+# wired up its cert. The nginx role only adds vhosts for domains in the list,
+# it never prunes ones that get removed, so this has to be listed explicitly
+# to get cleaned up on the next run.
+legacy_nginx_vhost_files:
+  - cloudshareapi
+  - filestation.vuxph.xyz
