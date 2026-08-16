@@ -1,20 +1,16 @@
 server {
     listen 80;
-    server_name {{ domain }};
+    server_name {{ domain_name }};
 
     client_max_body_size 100M;
-
-    # Prometheus metrics carry internal detail (JVM stats, DB pool, endpoint-level counters) and
-    # aren't meant for the public internet - Prometheus itself scrapes the app container directly
-    # over the internal Docker network (app:8080), bypassing nginx entirely, so blocking this path
-    # here doesn't affect real scraping. Path matches cloudshareapi's server.servlet.context-path.
-    location /api/v1.0/actuator/prometheus {
+{% for path in domain_deny_paths | default([]) %}
+    location {{ path }} {
         deny all;
         return 403;
     }
-
+{% endfor %}
     location / {
-        proxy_pass http://127.0.0.1:{{ app_upstream_port }};
+        proxy_pass http://127.0.0.1:{{ domain_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

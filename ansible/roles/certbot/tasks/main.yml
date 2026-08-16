@@ -22,11 +22,13 @@
 - name: Ensure certbot manages the nginx vhost for each domain
   command: >
     certbot --nginx
-    -d {{ item }}
+    -d {{ item.name }}
     --non-interactive --agree-tos
     -m {{ letsencrypt_email }}
     --redirect
   loop: "{{ domains }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: certbot_result
   changed_when: "'Certificate not yet due for renewal' not in certbot_result.stdout"
 

@@ -13,8 +13,10 @@
 
 - name: Check whether a vhost file already exists per domain
   stat:
-    path: "/etc/nginx/sites-available/{{ item }}"
+    path: "/etc/nginx/sites-available/{{ item.name }}"
   loop: "{{ domains }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: vhost_stat
 
 # Only writes the plain HTTP vhost the FIRST time. On later runs the file
@@ -22,22 +24,26 @@
 # block) and this task is skipped, so we never clobber certbot's edits.
 - name: Bootstrap plain HTTP vhost (skipped once certbot owns the file)
   vars:
-    domain: "{{ item.item }}"
+    domain_name: "{{ item.item.name }}"
+    domain_port: "{{ item.item.upstream_port }}"
+    domain_deny_paths: "{{ item.item.deny_paths | default([]) }}"
   template:
     src: vhost.conf.j2
-    dest: "/etc/nginx/sites-available/{{ item.item }}"
+    dest: "/etc/nginx/sites-available/{{ item.item.name }}"
     mode: "0644"
   loop: "{{ vhost_stat.results }}"
   loop_control:
-    label: "{{ item.item }}"
+    label: "{{ item.item.name }}"
   when: not item.stat.exists
 
 - name: Enable vhost symlinks
   file:
-    src: "/etc/nginx/sites-available/{{ item }}"
-    dest: "/etc/nginx/sites-enabled/{{ item }}"
+    src: "/etc/nginx/sites-available/{{ item.name }}"
+    dest: "/etc/nginx/sites-enabled/{{ item.name }}"
     state: link
   loop: "{{ domains }}"
+  loop_control:
+    label: "{{ item.name }}"
   notify: reload nginx
 
 - name: Remove legacy/misconfigured vhost files (sites-available)
