@@ -37,6 +37,11 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/webhooks/**", "/files/public/**", "/health", "/auth/**").permitAll()
+                        // Actuator health is meant to be publicly reachable (uptime checks); prometheus
+                        // is permitted here too but nginx blocks it from the public internet at the proxy
+                        // level - Prometheus itself scrapes the app container directly over the internal
+                        // Docker network, never through nginx. See ansible/roles/nginx.
+                        .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                         // Tools work without an account: upload a file, submit a job, poll its
                         // status. Only downloading the result (and everything else - listing
                         // jobs, "My Files", payments) requires login.
