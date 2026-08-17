@@ -1,6 +1,14 @@
 global:
   scrape_interval: 15s
 
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   # Scrapes the app container directly over the internal Docker network - never
   # goes through nginx, so the public "deny" block on this path (see

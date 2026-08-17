@@ -1,0 +1,20 @@
+groups:
+  - name: cloudshareapi-alerts
+    rules:
+      - alert: InstanceDown
+        expr: up{job="cloudshareapi"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "App cloudshareapi đang down"
+          description: "Prometheus không scrape được {{ $labels.instance }} trong hơn 1 phút."
+
+      - alert: HighJvmMemoryUsage
+        expr: sum(jvm_memory_used_bytes{application="cloudshareapi", area="heap"}) / sum(jvm_memory_max_bytes{application="cloudshareapi", area="heap"}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM heap memory cao"
+          description: "Heap usage đã vượt 90% liên tục trong 5 phút."
