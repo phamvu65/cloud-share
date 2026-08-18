@@ -37,6 +37,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/webhooks/**", "/files/public/**", "/health", "/auth/**").permitAll()
+                        // OpenAPI spec + Swagger UI - needed to import the API into Postman/Swagger UI itself.
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Actuator health is meant to be publicly reachable (uptime checks); prometheus
                         // is permitted here too but nginx blocks it from the public internet at the proxy
                         // level - Prometheus itself scrapes the app container directly over the internal
