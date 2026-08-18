@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @Document(collection = "payment_transactions")
 public class PaymentTransaction {
     private String id;
-    private String clerkId;
+    private String userId;
     private String orderId;
     private String paymentId;
     private String planId;

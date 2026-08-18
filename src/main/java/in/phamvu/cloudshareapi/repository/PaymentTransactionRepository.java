@@ -8,11 +8,7 @@ import java.util.Optional;
 
 public interface PaymentTransactionRepository extends MongoRepository<PaymentTransaction, String> {
 
-    List<PaymentTransaction> findByClerkId(String clerkId);
-
-    List<PaymentTransaction> findByClerkIdOrderByTransactionDateDesc(String clerkId);
-
-    List<PaymentTransaction> findByClerkIdAndStatusOrderByTransactionDateDesc(String clerkId, String status);
+    List<PaymentTransaction> findByUserIdAndStatusOrderByTransactionDateDesc(String userId, String status);
 
     Optional<PaymentTransaction> findByOrderId(String orderId);
 }
