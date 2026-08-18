@@ -38,9 +38,9 @@ public class PaymentService {
     public PaymentDTO createOrder(PaymentDTO paymentDTO) {
         try {
             CustomUserDetails userDetails = (CustomUserDetails) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            String clerkId = userDetails.getId();
+            String userId = userDetails.getId();
 
-            UserDocument userDocument = userRepository.findById(clerkId).orElseThrow(() -> new RuntimeException("User not found"));
+            UserDocument userDocument = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
             // Tạo Checkout Session (thay cho PaymentIntent)
             SessionCreateParams params = SessionCreateParams.builder()
@@ -65,7 +65,7 @@ public class PaymentService {
                                     )
                                     .build()
                     )
-                    .putMetadata("clerk_id", clerkId)
+                    .putMetadata("user_id", userId)
                     .putMetadata("plan_id", paymentDTO.getPlanId())
                     .putMetadata("user_email", userDocument.getEmail())
                     .build();
@@ -74,7 +74,7 @@ public class PaymentService {
 
             // Tạo pending transaction record
             PaymentTransaction transaction = PaymentTransaction.builder()
-                    .clerkId(clerkId)
+                    .userId(userId)
                     .orderId(session.getId())
                     .planId(paymentDTO.getPlanId())
                     .amount(paymentDTO.getAmount())

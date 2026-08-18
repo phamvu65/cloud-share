@@ -36,13 +36,13 @@ public class StripeWebhookController {
                     String sessionId = dataObject.getString("id");
                     JSONObject metadata = dataObject.getJSONObject("metadata");
 
-                    String clerkId = metadata.getString("clerk_id");
+                    String userId = metadata.getString("user_id");
                     String planId = metadata.getString("plan_id");
 
                     System.out.println("Session ID: " + sessionId);
-                    System.out.println("ClerkId: " + clerkId + ", PlanId: " + planId);
+                    System.out.println("UserId: " + userId + ", PlanId: " + planId);
 
-                    paymentService.handlePaymentSuccess(sessionId, clerkId, planId);
+                    paymentService.handlePaymentSuccess(sessionId, userId, planId);
                     break;
 
                 case "checkout.session.expired":

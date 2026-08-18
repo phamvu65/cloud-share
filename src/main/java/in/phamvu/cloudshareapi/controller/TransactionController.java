@@ -25,7 +25,7 @@ public class TransactionController {
     public ResponseEntity<?> getUserTransactions() {
         CustomUserDetails userDetails = (CustomUserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         String userId = userDetails.getId();
-        List<PaymentTransaction> transactionList= paymentTransactionRepository.findByClerkIdAndStatusOrderByTransactionDateDesc(userId, "SUCCESS");
+        List<PaymentTransaction> transactionList= paymentTransactionRepository.findByUserIdAndStatusOrderByTransactionDateDesc(userId, "SUCCESS");
         return ResponseEntity.ok(transactionList);
     }
 }
