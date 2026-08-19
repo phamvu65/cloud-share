@@ -11,6 +11,13 @@
     enabled: true
     state: started
 
+- name: Deploy websocket upgrade map (needed for Grafana Live Tailing, etc.)
+  template:
+    src: websocket-map.conf.j2
+    dest: /etc/nginx/conf.d/websocket-map.conf
+    mode: "0644"
+  notify: reload nginx
+
 - name: Check whether a vhost file already exists per domain
   stat:
     path: "/etc/nginx/sites-available/{{ item.name }}"
