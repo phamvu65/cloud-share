@@ -15,11 +15,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
+import java.io.IOException;
 import java.util.Date;
 import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
+import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
@@ -86,6 +88,20 @@ public class GlobalExceptionHandler {
                 .message(e.getMessage())
                 .status(UNAUTHORIZED.value())
                 .error(UNAUTHORIZED.getReasonPhrase())
+                .path(request.getDescription(false).replace("uri=", ""))
+                .build();
+
+    }
+
+    @ExceptionHandler(IOException.class)
+    @ResponseStatus(INTERNAL_SERVER_ERROR)
+    public ErrorResponse handleIOException(IOException e, WebRequest request){
+
+        return ErrorResponse.builder()
+                .timestamp(new Date())
+                .message(e.getMessage())
+                .status(INTERNAL_SERVER_ERROR.value())
+                .error(INTERNAL_SERVER_ERROR.getReasonPhrase())
                 .path(request.getDescription(false).replace("uri=", ""))
                 .build();
 

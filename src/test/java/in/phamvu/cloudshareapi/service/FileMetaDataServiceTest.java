@@ -24,7 +24,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
@@ -58,10 +58,10 @@ class FileMetaDataServiceTest {
 
     @Test
     void uploadFiles_anonymousCaller_writesToDiskAndSavesMetadataWithNullOwner() throws IOException {
-        when(fileMetaDataRepository.save(any(FileMetaDataDocument.class))).thenAnswer(invocation -> {
-            FileMetaDataDocument doc = invocation.getArgument(0);
-            doc.setId("file-1");
-            return doc;
+        when(fileMetaDataRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            List<FileMetaDataDocument> docs = invocation.getArgument(0);
+            docs.forEach(doc -> doc.setId("file-1"));
+            return docs;
         });
         MockMultipartFile file = new MockMultipartFile("files", "report.pdf", "application/pdf", "hello".getBytes());
 
@@ -79,7 +79,7 @@ class FileMetaDataServiceTest {
     @Test
     void uploadFiles_authenticatedCaller_savesMetadataWithOwner() throws IOException {
         authenticateAs("user-1");
-        when(fileMetaDataRepository.save(any(FileMetaDataDocument.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fileMetaDataRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         MockMultipartFile file = new MockMultipartFile("files", "photo.png", "image/png", "data".getBytes());
 
         List<FileMetaDataDTO> result = fileMetaDataService.uploadFiles(new org.springframework.web.multipart.MultipartFile[]{file});
