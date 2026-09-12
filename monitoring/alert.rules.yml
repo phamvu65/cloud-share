@@ -18,3 +18,21 @@ groups:
         annotations:
           summary: "JVM heap memory cao"
           description: "Heap usage đã vượt 90% liên tục trong 5 phút."
+
+      - alert: DiskSpaceLow
+        expr: disk_free_bytes{application="cloudshareapi"} / disk_total_bytes{application="cloudshareapi"} < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk sắp đầy"
+          description: "Dung lượng trống dưới 15% liên tục trong 5 phút trên {{ $labels.instance }}."
+
+      - alert: DiskSpaceCritical
+        expr: disk_free_bytes{application="cloudshareapi"} / disk_total_bytes{application="cloudshareapi"} < 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk gần đầy - nguy cơ mất ghi dữ liệu"
+          description: "Dung lượng trống dưới 5% liên tục trong 2 phút trên {{ $labels.instance }}. Upload và job xử lý PDF có thể bắt đầu fail."

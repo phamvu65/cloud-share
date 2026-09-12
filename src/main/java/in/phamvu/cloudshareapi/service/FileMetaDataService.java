@@ -54,25 +54,45 @@ public class FileMetaDataService {
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(uploadPath);
 
-        List<FileMetaDataDTO> uploaded = new ArrayList<>();
-        for (MultipartFile file : files) {
-            String fileName = UUID.randomUUID()+"."+ StringUtils.getFilenameExtension(file.getOriginalFilename());
-            Path targetLocation = uploadPath.resolve(fileName);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+        List<Path> writtenPaths = new ArrayList<>();
+        try {
+            List<FileMetaDataDocument> pendingMetadata = new ArrayList<>();
+            for (MultipartFile file : files) {
+                String fileName = UUID.randomUUID() + "." + StringUtils.getFilenameExtension(file.getOriginalFilename());
+                Path targetLocation = uploadPath.resolve(fileName);
+                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+                writtenPaths.add(targetLocation);
 
-            FileMetaDataDocument fileMetadata = FileMetaDataDocument.builder()
-                    .userId(currentUserId)
-                    .fileLocation(targetLocation.toString())
-                    .name(file.getOriginalFilename())
-                    .size(file.getSize())
-                    .type(file.getContentType())
-                    .isPublic(false)
-                    .uploadedAt(LocalDateTime.now())
-                    .build();
+                pendingMetadata.add(FileMetaDataDocument.builder()
+                        .userId(currentUserId)
+                        .fileLocation(targetLocation.toString())
+                        .name(file.getOriginalFilename())
+                        .size(file.getSize())
+                        .type(file.getContentType())
+                        .isPublic(false)
+                        .uploadedAt(LocalDateTime.now())
+                        .build());
+            }
 
-            uploaded.add(mapToDTO(fileMetaDataRepository.save(fileMetadata)));
+            return fileMetaDataRepository.saveAll(pendingMetadata).stream()
+                    .map(this::mapToDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            deleteQuietly(writtenPaths);
+            if (e instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw new RuntimeException("Failed to upload files", e);
         }
-        return uploaded;
+    }
+
+    private void deleteQuietly(List<Path> paths) {
+        for (Path path : paths) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     public List<FileMetaDataDTO> getFiles(){
