@@ -36,15 +36,35 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # The VPS's sshd sits under constant SSH brute-force noise, which occasionally causes
+      # legitimate connections (including this one) to time out or drop mid-handshake. Plain
+      # ssh + a retry loop rides out those transient failures instead of failing the whole
+      # deploy on one bad connection attempt.
       - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd ~/cloudshareapi
-            git pull --ff-only
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          for attempt in 1 2 3 4 5; do
+            if ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" '
+              set -e
+              cd ~/cloudshareapi
+              git pull --ff-only
+              docker compose pull
+              docker compose up -d
+              docker image prune -f
+            '; then
+              echo "Deploy succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "All deploy attempts failed"
+          exit 1
