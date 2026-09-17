@@ -36,7 +36,7 @@ public class SecurityConfig {
         httpSecurity.cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/webhooks/**", "/files/public/**", "/health", "/auth/**").permitAll()
+                        .requestMatchers("/webhooks/**", "/files/public/**", "/s/**", "/health", "/auth/**").permitAll()
                         // OpenAPI spec + Swagger UI - needed to import the API into Postman/Swagger UI itself.
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Actuator health is meant to be publicly reachable (uptime checks); prometheus
@@ -47,7 +47,7 @@ public class SecurityConfig {
                         // Tools work without an account: upload a file, submit a job, poll its
                         // status. Only downloading the result (and everything else - listing
                         // jobs, "My Files", payments) requires login.
-                        .requestMatchers(HttpMethod.POST, "/files/upload").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/files/upload", "/short-links").permitAll()
                         .requestMatchers(HttpMethod.POST, "/pdf/compress", "/pdf/translate", "/pdf/from-pdf", "/pdf/to-pdf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/pdf/jobs/*").permitAll()
                         .anyRequest().authenticated())
